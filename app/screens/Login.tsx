@@ -26,6 +26,9 @@ import {
   X,
 } from "lucide-react-native";
 
+// Backend
+import { supabase } from "../lib/supabase";
+
 // Styles
 import { bannerGradient, fireGradient } from "../styles/colours";
 import { RootStackParamList } from "../types/types";
@@ -38,27 +41,42 @@ const Login = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
 
   // Staff Modal State
   const [showStaffModal, setShowStaffModal] = useState(false);
   const [staffCode, setStaffCode] = useState("");
 
-  const handleLogin = () => {
-    // In a real app: Validate & Auth with Backend
+  const handleLogin = async () => {
     if (!email || !password) {
       Alert.alert("Missing Fields", "Please enter your email and password.");
       return;
     }
-    // Success -> Go to Home
-    navigation.replace("Home");
+
+    setLoading(true);
+
+    // 👇 SUPABASE LOGIN LOGIC
+    const { error } = await supabase.auth.signInWithPassword({
+      email: email,
+      password: password,
+    });
+
+    setLoading(false);
+
+    if (error) {
+      Alert.alert("Login Failed", error.message);
+    } else {
+      // Success! Navigate to Home
+      // @ts-ignore
+      navigation.replace("Home");
+    }
   };
 
   const handleStaffLogin = () => {
-    // In a real app: Verify code with backend
+    // Mock verification for staff (can be replaced with API call later)
     if (staffCode === "882901") {
-      // Mock code
       setShowStaffModal(false);
-      // Navigate DIRECTLY to Scanner, bypassing the main app
+      // Navigate DIRECTLY to Scanner
       navigation.replace("ScanTickets");
     } else {
       Alert.alert("Invalid Code", "Access denied. Please check your code.");
@@ -114,7 +132,7 @@ const Login = () => {
                   onChangeText={setEmail}
                   autoCapitalize="none"
                   keyboardType="email-address"
-                  className="flex-1 text-white text-lg font-medium h-full ml-2"
+                  className="flex-1 text-white text-lg font-medium h-full"
                   style={{ fontFamily: "Jost-Medium" }}
                 />
               </View>
@@ -133,7 +151,7 @@ const Login = () => {
                   value={password}
                   onChangeText={setPassword}
                   secureTextEntry={!showPassword}
-                  className="flex-1 text-white text-lg font-medium h-full ml-2"
+                  className="flex-1 text-white text-lg font-medium h-full"
                   style={{ fontFamily: "Jost-Medium" }}
                 />
                 <TouchableOpacity
@@ -162,7 +180,10 @@ const Login = () => {
             <TouchableOpacity
               onPress={handleLogin}
               activeOpacity={0.9}
-              className="w-full shadow-lg shadow-orange-500/30 mb-6"
+              disabled={loading}
+              className={`w-full shadow-lg shadow-orange-500/30 mb-6 ${
+                loading ? "opacity-50" : "opacity-100"
+              }`}
             >
               <LinearGradient
                 {...fireGradient}
@@ -172,9 +193,9 @@ const Login = () => {
                   className="text-white text-xl font-bold tracking-wide mr-2"
                   style={{ fontFamily: "Jost-Medium" }}
                 >
-                  LOG IN
+                  {loading ? "LOGGING IN..." : "LOG IN"}
                 </Text>
-                <ArrowRight color="white" size={24} />
+                {!loading && <ArrowRight color="white" size={24} />}
               </LinearGradient>
             </TouchableOpacity>
 
@@ -182,9 +203,7 @@ const Login = () => {
             <View className="flex-row justify-center mb-12">
               <Text className="text-gray-400">Don't have an account? </Text>
               <TouchableOpacity onPress={() => navigation.navigate("SignUp")}>
-                <Text className="text-white font-bold underline ml-2">
-                  Sign Up
-                </Text>
+                <Text className="text-white font-bold underline">Sign Up</Text>
               </TouchableOpacity>
             </View>
 
@@ -194,7 +213,7 @@ const Login = () => {
               className="flex-row items-center justify-center py-3 bg-white/5 rounded-xl border border-white/10"
             >
               <ShieldCheck color="#666" size={18} className="mr-2" />
-              <Text className="text-gray-500 font-bold text-sm ml-2">
+              <Text className="text-gray-500 font-bold text-sm">
                 Staff / Bouncer Check-in
               </Text>
             </TouchableOpacity>

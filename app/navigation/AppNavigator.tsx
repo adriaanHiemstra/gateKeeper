@@ -20,6 +20,7 @@ import FriendsSocialCircleScreen from "../screens/FriendsSocialCircleScreen";
 import PurchaseTicketScreen from "../screens/PurchaseTicketScreen";
 import VenueProfileScreen from "../screens/VenueProfileScreen";
 import VenueReviewsScreen from "../screens/VenueReviewsScreen";
+import EventDiscussionScreen from "../screens/EventDiscussionScreen";
 
 // Settings screens
 import MyTicketsScreen from "../screens/MyTicketsScreen";
@@ -38,6 +39,7 @@ import LocationSettings from "../screens/SettingScreens/LocationSettings";
 import TicketsPaymentsSettings from "../screens/SettingScreens/TicketsPaymentsSettings";
 import DataSyncSettings from "../screens/SettingScreens/DataSyncSettings";
 import SupportFeedbackSettings from "../screens/SettingScreens/SupportFeedbackSettings";
+import FindFriendsScreen from "../screens/SettingScreens/FindFriendsScreen";
 
 import type { RootStackParamList } from "../types/types";
 
@@ -59,7 +61,6 @@ import HostSupportSettings from "../screens/HostScreens/HostSupportSettings";
 import GuestListScreen from "../screens/HostScreens/GuestListScreen";
 import TeamAccessScreen from "../screens/HostScreens/TeamAccessScreen";
 import PromoteEventScreen from "../screens/HostScreens/PromoteEventScreen";
-import EventDiscussionScreen from "../screens/EventDiscussionScreen";
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -67,30 +68,31 @@ export default function AppNavigator() {
   return (
     <NavigationContainer>
       <Stack.Navigator
-        initialRouteName="VenueProfile"
+        initialRouteName="Home"
         screenOptions={{ headerShown: false }}
       >
+        {/* Main Tabs */}
         <Stack.Screen name="Map" component={Map} />
         <Stack.Screen
           name="Home"
           component={HomeScreen}
-          options={{
-            headerShown: false,
-            gestureEnabled: false,
-          }}
+          options={{ headerShown: false, gestureEnabled: false }}
         />
         <Stack.Screen name="Search" component={Search} />
-        {/* <Stack.Screen name="Profile" component={Profile} /> ❌ REMOVED */}
+        {/* Profile removed, AccountSettings is now the main hub */}
 
+        {/* User Features */}
+        <Stack.Screen name="AccountSettings" component={AccountSettings} />
+        <Stack.Screen name="MyTicketsScreen" component={MyTicketsScreen} />
+        <Stack.Screen name="Wishlist" component={WishlistScreen} />
         <Stack.Screen
           name="FriendsSocialCircle"
           component={FriendsSocialCircleScreen}
         />
-        <Stack.Screen
-          name="EventProfile"
-          component={EventProfileScreen}
-          options={{ headerShown: false }}
-        />
+        <Stack.Screen name="FindFriends" component={FindFriendsScreen} />
+
+        {/* Event & Venue */}
+        <Stack.Screen name="EventProfile" component={EventProfileScreen} />
         <Stack.Screen name="TicketDisplay" component={TicketDisplayScreen} />
         <Stack.Screen
           name="EventHostProfile"
@@ -99,20 +101,18 @@ export default function AppNavigator() {
         <Stack.Screen name="VenueProfile" component={VenueProfileScreen} />
         <Stack.Screen name="PurchaseTicket" component={PurchaseTicketScreen} />
         <Stack.Screen name="VenueReviews" component={VenueReviewsScreen} />
+        <Stack.Screen
+          name="EventDiscussion"
+          component={EventDiscussionScreen}
+        />
 
-        {/* Settings screens */}
-        <Stack.Screen name="MyTicketsScreen" component={MyTicketsScreen} />
-        <Stack.Screen name="GetConnected" component={GetConnected} />
-        <Stack.Screen name="AddPayment" component={AddPayment} />
-        <Stack.Screen name="AddCardScreen" component={AddCardScreen} />
-        <Stack.Screen name="AccountSettings" component={AccountSettings} />
+        {/* Settings Sub-screens */}
         <Stack.Screen name="EditUserProfile" component={EditUserProfile} />
         <Stack.Screen name="ChangePassword" component={ChangePassword} />
         <Stack.Screen
           name="PrivacySecuritySettings"
           component={PrivacySecuritySettings}
         />
-        <Stack.Screen name="Wishlist" component={WishlistScreen} />
         <Stack.Screen
           name="NotificationsSettings"
           component={NotificationsSettings}
@@ -131,8 +131,12 @@ export default function AppNavigator() {
           name="SupportFeedbackSettings"
           component={SupportFeedbackSettings}
         />
+        <Stack.Screen name="GetConnected" component={GetConnected} />
+        <Stack.Screen name="AddPayment" component={AddPayment} />
+        <Stack.Screen name="AddCardScreen" component={AddCardScreen} />
         <Stack.Screen name="DeleteAccount" component={DeleteAccountScreen} />
 
+        {/* Auth */}
         <Stack.Screen name="Login" component={Login} />
         <Stack.Screen name="SignUp" component={SignUp} />
         <Stack.Screen name="ForgotPassword" component={ForgotPassword} />
@@ -161,10 +165,6 @@ export default function AppNavigator() {
         <Stack.Screen name="GuestList" component={GuestListScreen} />
         <Stack.Screen name="TeamAccess" component={TeamAccessScreen} />
         <Stack.Screen name="PromoteEvent" component={PromoteEventScreen} />
-        <Stack.Screen
-          name="EventDiscussion"
-          component={EventDiscussionScreen}
-        />
       </Stack.Navigator>
     </NavigationContainer>
   );

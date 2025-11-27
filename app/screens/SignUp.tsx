@@ -13,6 +13,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { useNavigation } from "@react-navigation/native";
+import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import {
   User,
   Mail,
@@ -23,25 +24,56 @@ import {
   ArrowLeft,
 } from "lucide-react-native";
 
+// Backend
+import { supabase } from "../lib/supabase";
+
+// Styles
 import { bannerGradient, fireGradient } from "../styles/colours";
+import { RootStackParamList } from "../types/types";
 
 const SignUp = () => {
-  const navigation = useNavigation();
+  const navigation =
+    useNavigation<NativeStackNavigationProp<RootStackParamList>>();
 
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
 
-  const handleSignUp = () => {
+  const handleSignUp = async () => {
     if (!name || !email || !password) {
       Alert.alert("Missing Details", "Please fill in all fields.");
       return;
     }
-    // In real app: Create user -> Navigate to Onboarding or Home
-    Alert.alert("Welcome!", "Your account has been created.");
-    // @ts-ignore
-    navigation.replace("Home");
+
+    setLoading(true);
+
+    // 👇 SUPABASE SIGNUP LOGIC
+    const { data, error } = await supabase.auth.signUp({
+      email: email,
+      password: password,
+      options: {
+        data: {
+          full_name: name, // Saves name to user metadata
+        },
+      },
+    });
+
+    setLoading(false);
+
+    if (error) {
+      Alert.alert("Sign Up Failed", error.message);
+    } else {
+      // Default Supabase behavior is to require email confirmation.
+      // If you disabled "Confirm Email" in Supabase dashboard, you can log them in directly.
+      // For now, we assume confirmation is required:
+      Alert.alert(
+        "Success!",
+        "Account created. Please check your email to verify."
+      );
+      navigation.navigate("Login");
+    }
   };
 
   return (
@@ -87,7 +119,7 @@ const SignUp = () => {
                   placeholderTextColor="#666"
                   value={name}
                   onChangeText={setName}
-                  className="flex-1 text-white text-lg font-medium h-full ml-2"
+                  className="flex-1 text-white text-lg font-medium h-full"
                   style={{ fontFamily: "Jost-Medium" }}
                 />
               </View>
@@ -107,7 +139,7 @@ const SignUp = () => {
                   onChangeText={setEmail}
                   keyboardType="email-address"
                   autoCapitalize="none"
-                  className="flex-1 text-white text-lg font-medium h-full ml-2"
+                  className="flex-1 text-white text-lg font-medium h-full"
                   style={{ fontFamily: "Jost-Medium" }}
                 />
               </View>
@@ -126,7 +158,7 @@ const SignUp = () => {
                   value={password}
                   onChangeText={setPassword}
                   secureTextEntry={!showPassword}
-                  className="flex-1 text-white text-lg font-medium h-full ml-2"
+                  className="flex-1 text-white text-lg font-medium h-full"
                   style={{ fontFamily: "Jost-Medium" }}
                 />
                 <TouchableOpacity
@@ -145,7 +177,10 @@ const SignUp = () => {
             <TouchableOpacity
               onPress={handleSignUp}
               activeOpacity={0.9}
-              className="w-full shadow-lg shadow-orange-500/30 mb-6"
+              disabled={loading}
+              className={`w-full shadow-lg shadow-orange-500/30 mb-6 ${
+                loading ? "opacity-50" : "opacity-100"
+              }`}
             >
               <LinearGradient
                 {...fireGradient}
@@ -155,15 +190,15 @@ const SignUp = () => {
                   className="text-white text-xl font-bold tracking-wide mr-2"
                   style={{ fontFamily: "Jost-Medium" }}
                 >
-                  SIGN UP
+                  {loading ? "CREATING..." : "SIGN UP"}
                 </Text>
-                <ArrowRight color="white" size={24} />
+                {!loading && <ArrowRight color="white" size={24} />}
               </LinearGradient>
             </TouchableOpacity>
 
             <View className="flex-row justify-center">
               <Text className="text-gray-400">Already have an account? </Text>
-              <TouchableOpacity onPress={() => navigation.goBack()}>
+              <TouchableOpacity onPress={() => navigation.navigate("Login")}>
                 <Text className="text-white font-bold underline">Log In</Text>
               </TouchableOpacity>
             </View>

@@ -2,7 +2,7 @@ export type RootStackParamList = {
   Home: undefined;
   Map: undefined;
   Search: undefined;
-  // Profile: undefined; // ❌ REMOVED
+  // Profile: undefined; ❌ REMOVED
 
   // Auth screens
   Login: undefined;
@@ -27,6 +27,7 @@ export type RootStackParamList = {
   AddCardScreen: undefined;
   DeleteAccount: undefined;
   FriendsSocialCircle: undefined;
+  FindFriends: undefined;
 
   // Event screens
   EventProfile: {
@@ -37,8 +38,8 @@ export type RootStackParamList = {
     description?: string;
     time?: string;
     location?: string;
+    ticketUrl?: string;
   };
-  VenueProfile: { venueId: string; venueName: string };
   TicketDisplay: {
     eventTitle: string;
     ticketId?: string;
@@ -48,8 +49,9 @@ export type RootStackParamList = {
   };
   EventHostProfile: undefined;
   PurchaseTicket: { eventId: string };
+  VenueProfile: { venueId: string; venueName: string };
   VenueReviews: { venueId: string; venueName: string };
-  EventDiscussion: { eventId: string; eventName: string }; // 👈 Add this
+  EventDiscussion: { eventId: string; eventName: string };
 
   // Host Screens
   HostDashboard: undefined;
@@ -69,5 +71,4 @@ export type RootStackParamList = {
   GuestList: undefined;
   TeamAccess: undefined;
   PromoteEvent: { eventId: string };
-  EventReviews: { eventId: string };
 };
