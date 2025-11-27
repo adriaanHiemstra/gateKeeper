@@ -1,0 +1,23 @@
+# Dependency Directories
+node_modules
+/android
+/ios
+
+# Expo/Babel/Cache files
+.expo/
+.vscode/
+dist/
+build/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# React Native/Reanimated specific
+/android/
+/ios/
+*.iml
+.DS_Store
+
+# NativeWind
+nativewind-env.d.ts.bak
