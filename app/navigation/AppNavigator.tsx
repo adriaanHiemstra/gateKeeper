@@ -11,6 +11,7 @@ import Search from "../screens/Search";
 import SignUp from "../screens/SignUp";
 import Login from "../screens/Login";
 import ForgotPassword from "../screens/ForgotPassword";
+import ResetPassword from "../screens/ResetPassword";
 
 // Event Screens
 import EventProfileScreen from "../screens/EventProfileScreen";
@@ -68,7 +69,7 @@ export default function AppNavigator() {
   return (
     <NavigationContainer>
       <Stack.Navigator
-        initialRouteName="Home"
+        initialRouteName="SignUp"
         screenOptions={{ headerShown: false }}
       >
         {/* Main Tabs */}
@@ -140,6 +141,7 @@ export default function AppNavigator() {
         <Stack.Screen name="Login" component={Login} />
         <Stack.Screen name="SignUp" component={SignUp} />
         <Stack.Screen name="ForgotPassword" component={ForgotPassword} />
+        <Stack.Screen name="ResetPassword" component={ResetPassword} />
 
         {/* Host Screens */}
         <Stack.Screen name="HostDashboard" component={HostDashboard} />

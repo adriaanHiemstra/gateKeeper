@@ -9,6 +9,8 @@ export type RootStackParamList = {
   SignUp: undefined;
   ForgotPassword: undefined;
 
+  ResetPassword: undefined;
+
   // Settings screens
   AccountSettings: undefined;
   EditUserProfile: undefined;
