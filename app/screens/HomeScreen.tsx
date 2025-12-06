@@ -1,13 +1,14 @@
-import React, { useState } from "react";
+import React, { useState, useCallback } from "react";
 import {
   View,
-  Text,
   StyleSheet,
   Dimensions,
-  Image,
-  TouchableOpacity,
   Pressable,
+  Text,
+  Image,
   FlatList,
+  TouchableOpacity,
+  ActivityIndicator,
 } from "react-native";
 import Animated, {
   useSharedValue,
@@ -19,8 +20,11 @@ import Animated, {
 import { LinearGradient } from "expo-linear-gradient";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { X, ChevronRight } from "lucide-react-native";
-import { useNavigation } from "@react-navigation/native";
+import { useNavigation, useFocusEffect } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
+
+// Backend
+import { supabase } from "../lib/supabase";
 
 // Types
 import { RootStackParamList } from "../types/types";
@@ -37,80 +41,55 @@ const { width } = Dimensions.get("window");
 const HEADER_HEIGHT = 100;
 const PANEL_WIDTH = width * 0.85;
 
-const FEED_DATA = [
-  {
-    id: "1",
-    title: "Neon Jungle",
-    host: "Rockstar Events",
-    hostImg: require("../assets/profile-pic-1.png"),
-    image: require("../assets/imagePlaceHolder1.png"),
-    attendees: 12,
-    friendsList: [
-      {
-        id: "f1",
-        name: "Casey_Frey",
-        img: require("../assets/profile-pic-1.png"),
-      },
-      {
-        id: "f2",
-        name: "Sarah_J",
-        img: require("../assets/profile-pic-2.png"),
-      },
-      { id: "f3", name: "Mike_T", img: require("../assets/profile-pic-1.png") },
-    ],
-  },
-  {
-    id: "2",
-    title: "Techno Tunnel",
-    host: "Underground SA",
-    hostImg: require("../assets/profile-pic-2.png"),
-    image: require("../assets/imagePlaceHolder2.png"),
-    attendees: 8,
-    friendsList: [
-      {
-        id: "f4",
-        name: "David_M",
-        img: require("../assets/profile-pic-2.png"),
-      },
-      {
-        id: "f5",
-        name: "Amanda_C",
-        img: require("../assets/profile-pic-1.png"),
-      },
-    ],
-  },
-  {
-    id: "3",
-    title: "Summer Slam",
-    host: "Rockstar Events",
-    hostImg: require("../assets/profile-pic-1.png"),
-    image: require("../assets/imagePlaceHolder3.png"),
-    attendees: 24,
-    friendsList: [
-      {
-        id: "f1",
-        name: "Casey_Frey",
-        img: require("../assets/profile-pic-1.png"),
-      },
-      {
-        id: "f4",
-        name: "David_M",
-        img: require("../assets/profile-pic-2.png"),
-      },
-    ],
-  },
-];
+// Layout Constants
+const CARD_HEIGHT = width * 1.6;
+const CARD_MARGIN = 8;
+const SNAP_INTERVAL = CARD_HEIGHT + CARD_MARGIN;
 
 const HomeScreen = () => {
   const navigation =
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
 
-  // --- State for Side Panel ---
+  const [events, setEvents] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  // Social Panel State
   const [isPanelOpen, setIsPanelOpen] = useState(false);
   const [selectedFriends, setSelectedFriends] = useState<any[]>([]);
   const [selectedEventTitle, setSelectedEventTitle] = useState("");
 
-  // --- Animations ---
+  // --- FETCH DATA ---
+  useFocusEffect(
+    useCallback(() => {
+      fetchEvents();
+    }, [])
+  );
+
+  const fetchEvents = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("events")
+        .select(
+          `
+          *,
+          profiles:host_id (
+            username,
+            avatar_url
+          )
+        `
+        )
+        .order("date", { ascending: true });
+
+      if (error) throw error;
+      setEvents(data || []);
+    } catch (error: any) {
+      console.log("Fetch Error:", error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // --- Animation Logic ---
   const translateY = useSharedValue(0);
   const lastContentOffset = useSharedValue(0);
   const isHidden = useSharedValue(false);
@@ -141,11 +120,14 @@ const HomeScreen = () => {
     transform: [{ translateY: translateY.value }],
   }));
 
-  // Panel Animation
   const panelTranslateX = useSharedValue(width);
 
   const openPanel = (friends: any[], title: string) => {
-    setSelectedFriends(friends);
+    // Mock friends for now
+    setSelectedFriends([
+      { id: "1", name: "Sarah J", img: require("../assets/profile-pic-2.png") },
+      { id: "2", name: "Mike T", img: require("../assets/profile-pic-1.png") },
+    ]);
     setSelectedEventTitle(title);
     setIsPanelOpen(true);
     panelTranslateX.value = withTiming(width - PANEL_WIDTH, {
@@ -163,43 +145,86 @@ const HomeScreen = () => {
     transform: [{ translateX: panelTranslateX.value }],
   }));
 
+  // Helper for navigation
+  const goToEventProfile = (item: any) => {
+    navigation.navigate("EventProfile", {
+      eventName: item.title,
+      attendees: 120,
+      logo: item.profiles?.avatar_url
+        ? { uri: item.profiles.avatar_url }
+        : require("../assets/profile-pic-1.png"),
+      banner: item.banner_url
+        ? { uri: item.banner_url }
+        : require("../assets/event-placeholder.png"),
+      images: item.images || [],
+      time: new Date(item.date).toLocaleDateString(),
+      location: item.location_text,
+      description: item.description,
+      ticketUrl: item.ticket_url,
+    });
+  };
+
   return (
     <View className="flex-1 bg-[#121212]">
       <LinearGradient {...bannerGradient} style={StyleSheet.absoluteFill} />
 
       <TopBanner style={headerAnimatedStyle} />
 
-      <Animated.FlatList
-        data={FEED_DATA}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={{ paddingTop: 100, paddingBottom: 100 }}
-        onScroll={scrollHandler}
-        scrollEventThrottle={16}
-        showsVerticalScrollIndicator={false}
-        renderItem={({ item }) => (
-          <EventFeedCard
-            id={item.id}
-            title={item.title}
-            hostName={item.host}
-            hostAvatar={item.hostImg}
-            image={item.image}
-            attendeesCount={item.attendees}
-            onOpenSocial={() => openPanel(item.friendsList, item.title)}
-            // 👇 FIX: Added these two missing props
-            onPressHost={() => navigation.navigate("EventHostProfile")}
-            onViewEvent={() =>
-              navigation.navigate("EventProfile", {
-                eventName: item.title,
-                attendees: item.attendees,
-                logo: item.hostImg,
-                banner: item.image,
-              })
+      <SafeAreaView className="flex-1" edges={["left", "right"]}>
+        {loading ? (
+          <View className="flex-1 justify-center items-center pt-20">
+            <ActivityIndicator size="large" color="#FA8900" />
+          </View>
+        ) : (
+          <Animated.FlatList
+            data={events}
+            keyExtractor={(item) => item.id}
+            contentContainerStyle={{ paddingTop: 100, paddingBottom: 100 }}
+            onScroll={scrollHandler}
+            scrollEventThrottle={16}
+            showsVerticalScrollIndicator={false}
+            // Snap Logic
+            snapToInterval={SNAP_INTERVAL}
+            snapToAlignment="start"
+            decelerationRate="fast"
+            disableIntervalMomentum={true}
+            renderItem={({ item }) => (
+              <EventFeedCard
+                id={item.id}
+                title={item.title}
+                hostName={item.profiles?.username || "Unknown Host"}
+                hostAvatar={
+                  item.profiles?.avatar_url
+                    ? { uri: item.profiles.avatar_url }
+                    : require("../assets/profile-pic-1.png")
+                }
+                image={
+                  item.banner_url
+                    ? { uri: item.banner_url }
+                    : require("../assets/event-placeholder.png")
+                }
+                attendeesCount={12}
+                // Actions
+                onOpenSocial={() => openPanel([], item.title)}
+                onPressHost={() => navigation.navigate("EventHostProfile")} // Go to Host Profile
+                onViewEvent={() => goToEventProfile(item)} // Go to Event Profile
+              />
+            )}
+            ListEmptyComponent={
+              <View className="flex-1 justify-center items-center pt-32 px-10">
+                <Text className="text-white text-xl font-bold mb-2">
+                  No upcoming events
+                </Text>
+                <Text className="text-gray-500 text-center">
+                  Be the first to host one!
+                </Text>
+              </View>
             }
           />
         )}
-      />
+      </SafeAreaView>
 
-      {/* --- SIDE PANEL OVERLAY --- */}
+      {/* SIDE PANEL (Social) */}
       {isPanelOpen && (
         <View style={StyleSheet.absoluteFill} className="z-50">
           <Pressable
@@ -263,12 +288,6 @@ const HomeScreen = () => {
                   </TouchableOpacity>
                 )}
               />
-
-              <View className="mt-4 pt-4 border-t border-white/10">
-                <Text className="text-center text-gray-500 text-sm">
-                  + {selectedFriends.length > 0 ? 7 : 0} others in your circle
-                </Text>
-              </View>
             </SafeAreaView>
           </Animated.View>
         </View>

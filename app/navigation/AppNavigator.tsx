@@ -69,7 +69,7 @@ export default function AppNavigator() {
   return (
     <NavigationContainer>
       <Stack.Navigator
-        initialRouteName="SignUp"
+        initialRouteName="Home"
         screenOptions={{ headerShown: false }}
       >
         {/* Main Tabs */}

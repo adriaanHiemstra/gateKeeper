@@ -41,6 +41,7 @@ export type RootStackParamList = {
     time?: string;
     location?: string;
     ticketUrl?: string;
+    images?: any[];
   };
   TicketDisplay: {
     eventTitle: string;

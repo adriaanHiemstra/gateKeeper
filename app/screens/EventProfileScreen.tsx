@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import {
   View,
   Text,
@@ -10,6 +10,7 @@ import {
   StatusBar,
   Linking,
   Alert,
+  Modal,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { RouteProp, useRoute, useNavigation } from "@react-navigation/native";
@@ -21,8 +22,9 @@ import {
   Ticket,
   Heart,
   Share2,
-  MessageCircle, // 👈 Import MessageCircle
+  MessageCircle,
   ChevronRight,
+  X,
 } from "lucide-react-native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 
@@ -33,7 +35,7 @@ import TopBanner from "../components/TopBanner";
 import { fireGradient, bannerGradient } from "../styles/colours";
 import { RootStackParamList } from "../types/types";
 
-const { width: screenWidth } = Dimensions.get("window");
+const { width: screenWidth, height: screenHeight } = Dimensions.get("window");
 
 type EventProfileRouteProp = RouteProp<RootStackParamList, "EventProfile">;
 
@@ -42,28 +44,46 @@ const EventProfileScreen = () => {
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { params } = useRoute<EventProfileRouteProp>();
 
-  // Data with Fallbacks
-  const eventName = params?.eventName ?? "Summer Slam 2025";
-  const banner = params?.banner ?? require("../assets/event-placeholder.png");
+  // 1. EXTRACT DATA & HANDLE FALLBACKS
+  const eventName = params?.eventName ?? "Event Name";
   const logo = params?.logo ?? require("../assets/profile-pic-1.png");
   const description =
-    params?.description ??
-    "Get ready for the biggest beach party of the season! We're bringing top-tier DJs, mesmerizing light shows, and an unforgettable vibe to Clifton 4th. Don't miss out on the event everyone will be talking about.";
-  const time = params?.time ?? "28 Oct • 14:00 - 02:00";
-  const location = params?.location ?? "Clifton 4th Beach";
-  const ticketUrl = (params as any)?.ticketUrl;
+    params?.description ?? "Join us for an unforgettable experience!";
+  const time = params?.time ?? "Date TBA";
+  const location = params?.location ?? "Location TBA";
+  const ticketUrl = params?.ticketUrl;
+
+  // Handle Images: If array exists use it, otherwise wrap single banner in array
+  const rawImages = params?.images;
+  const banner = params?.banner ?? require("../assets/event-placeholder.png");
+
+  const galleryImages =
+    rawImages && rawImages.length > 0
+      ? rawImages.map((img) => (typeof img === "string" ? { uri: img } : img))
+      : [banner];
 
   const tags = ["Techno", "Beach", "Live Music"];
 
+  // 2. CAROUSEL STATE
+  const [activeSlide, setActiveSlide] = useState(0);
+  const [showFullGallery, setShowFullGallery] = useState(false);
+
+  const handleScroll = (event: any) => {
+    const slide = Math.ceil(
+      event.nativeEvent.contentOffset.x /
+        event.nativeEvent.layoutMeasurement.width
+    );
+    if (slide !== activeSlide) setActiveSlide(slide);
+  };
+
   const handleTicketPress = async () => {
     if (ticketUrl) {
+      // 🌍 External Link (Affiliate)
       const supported = await Linking.canOpenURL(ticketUrl);
-      if (supported) {
-        await Linking.openURL(ticketUrl);
-      } else {
-        Alert.alert("Error", "Cannot open ticket link.");
-      }
+      if (supported) await Linking.openURL(ticketUrl);
+      else Alert.alert("Error", "Cannot open ticket link.");
     } else {
+      // 📱 Internal Checkout
       navigation.navigate("PurchaseTicket", { eventId: "1" });
     }
   };
@@ -71,7 +91,11 @@ const EventProfileScreen = () => {
   return (
     <View className="flex-1 bg-[#121212]">
       <StatusBar barStyle="light-content" />
+
+      {/* Background */}
       <LinearGradient {...bannerGradient} style={StyleSheet.absoluteFill} />
+
+      {/* Top Banner */}
       <TopBanner />
 
       <SafeAreaView className="flex-1" edges={["left", "right"]}>
@@ -80,13 +104,31 @@ const EventProfileScreen = () => {
           contentContainerStyle={{ paddingTop: 100, paddingBottom: 140 }}
           showsVerticalScrollIndicator={false}
         >
-          {/* 1. HERO IMAGE AREA */}
-          <View className="relative w-full h-80 mb-6">
-            <Image
-              source={banner}
-              className="w-full h-full"
-              resizeMode="cover"
-            />
+          {/* 3. IMAGE CAROUSEL */}
+          <View className="relative h-80 w-full mb-6">
+            <ScrollView
+              horizontal
+              pagingEnabled
+              showsHorizontalScrollIndicator={false}
+              onScroll={handleScroll}
+              scrollEventThrottle={16}
+            >
+              {galleryImages.map((img: any, index: number) => (
+                <TouchableOpacity
+                  key={index}
+                  activeOpacity={0.9}
+                  onPress={() => setShowFullGallery(true)}
+                >
+                  <Image
+                    source={img}
+                    style={{ width: screenWidth, height: 320 }}
+                    resizeMode="cover"
+                  />
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+
+            {/* Gradient Fade */}
             <LinearGradient
               colors={["transparent", "#121212"]}
               style={{
@@ -96,8 +138,10 @@ const EventProfileScreen = () => {
                 bottom: 0,
                 height: 100,
               }}
+              pointerEvents="none"
             />
 
+            {/* Floating Actions (Back / Like / Share) */}
             <View className="absolute top-4 left-4 flex-row justify-between w-[92%]">
               <TouchableOpacity
                 onPress={() => navigation.goBack()}
@@ -114,10 +158,25 @@ const EventProfileScreen = () => {
                 </TouchableOpacity>
               </View>
             </View>
+
+            {/* Pagination Dots */}
+            {galleryImages.length > 1 && (
+              <View className="absolute bottom-4 left-0 right-0 flex-row justify-center gap-2">
+                {galleryImages.map((_: any, i: number) => (
+                  <View
+                    key={i}
+                    className={`w-2 h-2 rounded-full ${
+                      i === activeSlide ? "bg-white" : "bg-white/30"
+                    }`}
+                  />
+                ))}
+              </View>
+            )}
           </View>
 
-          {/* 2. TITLE & HOST */}
+          {/* 4. TITLE & HOST */}
           <View className="px-6 mb-6 -mt-12">
+            {/* Host Pill */}
             <TouchableOpacity
               onPress={() => navigation.navigate("EventHostProfile")}
               className="flex-row items-center bg-[#1E1E1E] self-start px-2 py-1 rounded-full border border-white/10 mb-4 shadow-lg"
@@ -135,6 +194,7 @@ const EventProfileScreen = () => {
               {eventName}
             </Text>
 
+            {/* Tags */}
             <View className="flex-row flex-wrap gap-2 mt-2">
               {tags.map((tag, i) => (
                 <View
@@ -147,9 +207,9 @@ const EventProfileScreen = () => {
             </View>
           </View>
 
-          {/* 3. GLASS INFO CARD (Updated) */}
+          {/* 5. INFO CARD (Glassmorphism) */}
           <View className="mx-6 bg-white/5 border border-white/10 rounded-3xl p-5 mb-8 gap-5">
-            {/* Time */}
+            {/* Date */}
             <View className="flex-row items-center">
               <View className="bg-orange-500/20 p-3 rounded-xl mr-4">
                 <Calendar color="#FA8900" size={24} />
@@ -162,7 +222,7 @@ const EventProfileScreen = () => {
               </View>
             </View>
 
-            {/* Location */}
+            {/* Location (Clickable) */}
             <View className="flex-row items-center">
               <View className="bg-blue-500/20 p-3 rounded-xl mr-4">
                 <MapPin color="#60A5FA" size={24} />
@@ -195,8 +255,7 @@ const EventProfileScreen = () => {
               </View>
             </View>
 
-            {/* 👇 NEW: Discussion / Community */}
-            {/* We separate it slightly with a top border for emphasis */}
+            {/* Discussion Link */}
             <View className="border-t border-white/10 pt-4 mt-1">
               <TouchableOpacity
                 onPress={() =>
@@ -225,7 +284,7 @@ const EventProfileScreen = () => {
             </View>
           </View>
 
-          {/* 4. DESCRIPTION */}
+          {/* 6. DESCRIPTION */}
           <View className="px-6 mb-6">
             <Text className="text-white text-xl font-bold mb-2">About</Text>
             <Text className="text-gray-400 text-base leading-6">
@@ -233,7 +292,7 @@ const EventProfileScreen = () => {
             </Text>
           </View>
 
-          {/* 5. MAP PREVIEW */}
+          {/* 7. MAP PREVIEW */}
           <View className="px-6 mb-8">
             <Text className="text-white text-xl font-bold mb-3">Location</Text>
             <View className="h-40 w-full bg-white/10 rounded-3xl border border-white/10 overflow-hidden items-center justify-center">
@@ -243,7 +302,7 @@ const EventProfileScreen = () => {
           </View>
         </ScrollView>
 
-        {/* 6. STICKY BUY BUTTON */}
+        {/* 8. STICKY FOOTER */}
         <View className="absolute bottom-0 left-0 right-0 bg-[#121212]/95 border-t border-white/10 p-6 pb-8 flex-row items-center justify-between">
           <View>
             <Text className="text-gray-400 text-xs font-bold uppercase">
@@ -271,6 +330,51 @@ const EventProfileScreen = () => {
           </TouchableOpacity>
         </View>
       </SafeAreaView>
+
+      {/* 9. FULL SCREEN GALLERY MODAL */}
+      <Modal
+        visible={showFullGallery}
+        transparent={false}
+        animationType="fade"
+        onRequestClose={() => setShowFullGallery(false)}
+      >
+        <View className="flex-1 bg-black relative">
+          <TouchableOpacity
+            onPress={() => setShowFullGallery(false)}
+            className="absolute top-12 right-6 z-50 bg-black/50 p-2 rounded-full"
+          >
+            <X color="white" size={32} />
+          </TouchableOpacity>
+
+          <ScrollView
+            horizontal
+            pagingEnabled
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{ alignItems: "center" }}
+          >
+            {galleryImages.map((img: any, index: number) => (
+              <View
+                key={index}
+                style={{
+                  width: screenWidth,
+                  height: screenHeight,
+                  justifyContent: "center",
+                }}
+              >
+                <Image
+                  source={img}
+                  style={{ width: screenWidth, height: screenWidth * 1.2 }}
+                  resizeMode="contain"
+                />
+              </View>
+            ))}
+          </ScrollView>
+
+          <View className="absolute bottom-10 w-full items-center">
+            <Text className="text-white/60 font-bold">Swipe for more</Text>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 };
