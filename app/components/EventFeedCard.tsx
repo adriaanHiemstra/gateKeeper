@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   View,
   Text,
@@ -6,9 +6,20 @@ import {
   TouchableOpacity,
   Dimensions,
   ImageSourcePropType,
+  Modal,
+  FlatList,
+  StatusBar,
+  Pressable,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
-import { Users, Heart, ArrowRight } from "lucide-react-native";
+import {
+  Users,
+  Heart,
+  ArrowRight,
+  X,
+  Volume2,
+  VolumeX,
+} from "lucide-react-native";
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -16,24 +27,35 @@ import Animated, {
   withDelay,
   withTiming,
 } from "react-native-reanimated";
-import { Video, ResizeMode } from "expo-av"; // ✅ 1. Import Video
-
+import { Video, ResizeMode } from "expo-av";
 import { fireGradient } from "../styles/colours";
 
-const { width } = Dimensions.get("screen");
-const CARD_HEIGHT = width * 1.6;
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("screen");
+const CARD_HEIGHT = SCREEN_WIDTH * 1.6;
 
 type EventFeedCardProps = {
   id: string;
   title: string;
   hostName: string;
   hostAvatar: ImageSourcePropType;
-  image: any; // ✅ Changed to 'any' to handle URIs easier
+  image: any; // Fallback single image/video
+  mediaItems?: any[]; // ✅ NEW: Array of media for carousel
   attendeesCount: number;
   onOpenSocial: () => void;
   onPressHost: () => void;
   onViewEvent: () => void;
   showSocial?: boolean;
+};
+
+// --- HELPER TO CHECK MEDIA TYPE ---
+const isVideoFile = (source: any) => {
+  if (source?.uri) {
+    const uri = source.uri.toLowerCase();
+    return (
+      uri.endsWith(".mp4") || uri.endsWith(".mov") || uri.endsWith(".quicktime")
+    );
+  }
+  return false;
 };
 
 const EventFeedCard = ({
@@ -42,6 +64,7 @@ const EventFeedCard = ({
   hostName,
   hostAvatar,
   image,
+  mediaItems = [], // Default to empty if not passed
   attendeesCount,
   onOpenSocial,
   onPressHost,
@@ -49,26 +72,20 @@ const EventFeedCard = ({
   showSocial = true,
 }: EventFeedCardProps) => {
   const [isLiked, setIsLiked] = useState(false);
-  const [isVideo, setIsVideo] = useState(false); // ✅ Check if media is video
+  const [isFullScreen, setIsFullScreen] = useState(false);
+
+  // Combine single image into array if mediaItems is empty
+  const carouselData = mediaItems.length > 0 ? mediaItems : [image];
 
   // Animation Values
   const scale = useSharedValue(0);
   const opacity = useSharedValue(0);
 
-  // ✅ Check if the image source is actually a video URL
-  useEffect(() => {
-    if (image?.uri) {
-      const uri = image.uri.toLowerCase();
-      if (
-        uri.endsWith(".mp4") ||
-        uri.endsWith(".mov") ||
-        uri.endsWith(".quicktime")
-      ) {
-        setIsVideo(true);
-      }
-    }
-  }, [image]);
+  // --- FULL SCREEN VIDEO STATE ---
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [isMuted, setIsMuted] = useState(false); // Default sound on in full screen? Up to you.
 
+  // Handle Like Animation
   const handleLike = () => {
     const newState = !isLiked;
     setIsLiked(newState);
@@ -85,39 +102,98 @@ const EventFeedCard = ({
     opacity: opacity.value,
   }));
 
-  return (
-    <View
-      className="mb-2 bg-black relative"
-      style={{ height: CARD_HEIGHT, width: width }}
-    >
-      {/* 1. Main Media Area */}
-      <View className="flex-1 relative justify-center items-center bg-gray-900">
-        {/* ✅ Conditional Rendering: Video vs Image */}
+  // Track which item is visible in the Carousel to play video
+  const onViewableItemsChanged = useCallback(({ viewableItems }: any) => {
+    if (viewableItems.length > 0) {
+      setCurrentIndex(viewableItems[0].index ?? 0);
+    }
+  }, []);
+
+  const viewabilityConfig = { itemVisiblePercentThreshold: 50 };
+
+  // --- RENDER ITEM FOR CAROUSEL ---
+  const renderFullScreenItem = ({
+    item,
+    index,
+  }: {
+    item: any;
+    index: number;
+  }) => {
+    const isVideo = isVideoFile(item);
+    const isActive = index === currentIndex; // Only play if active slide
+
+    return (
+      <View
+        style={{
+          width: SCREEN_WIDTH,
+          height: SCREEN_HEIGHT,
+          justifyContent: "center",
+          alignItems: "center",
+          backgroundColor: "black",
+        }}
+      >
         {isVideo ? (
           <Video
-            source={image}
-            style={{ width: "100%", height: "100%", position: "absolute" }}
-            resizeMode={ResizeMode.COVER}
-            shouldPlay={true}
+            source={item}
+            style={{ width: "100%", height: "80%" }} // ✅ Takes up 80% as requested
+            resizeMode={ResizeMode.CONTAIN}
+            shouldPlay={isActive} // Only play if looking at it
             isLooping={true}
-            isMuted={true} // Auto-play videos usually need to be muted first
+            isMuted={isMuted}
+            useNativeControls={false}
           />
         ) : (
           <Image
-            source={image}
-            className="w-full h-full absolute"
-            resizeMode="cover"
+            source={item}
+            style={{ width: "100%", height: "80%" }}
+            resizeMode="contain"
           />
         )}
+      </View>
+    );
+  };
 
-        {/* Pop-up Heart Animation */}
-        <View className="absolute inset-0 justify-center items-center z-10 pointer-events-none">
-          <Animated.View style={heartStyle}>
-            <Heart color="#FA8900" size={100} fill="#FA8900" />
-          </Animated.View>
-        </View>
+  // --- MAIN FEED RENDER (Mini Card) ---
+  const isMainVideo = isVideoFile(carouselData[0]);
 
-        {/* Bottom Gradient Overlay */}
+  return (
+    <>
+      <View
+        className="mb-2 bg-black relative"
+        style={{ height: CARD_HEIGHT, width: SCREEN_WIDTH }}
+      >
+        {/* 1. Main Clickable Area - TRIGGERS FULL SCREEN */}
+        <Pressable
+          onPress={() => setIsFullScreen(true)}
+          style={{ flex: 1, backgroundColor: "#111" }}
+        >
+          {isMainVideo ? (
+            <Video
+              source={carouselData[0]}
+              style={{ width: "100%", height: "100%", position: "absolute" }}
+              resizeMode={ResizeMode.COVER}
+              shouldPlay={true} // Auto-play on feed
+              isLooping={true}
+              isMuted={true} // Muted on feed
+            />
+          ) : (
+            <Image
+              source={carouselData[0]}
+              className="w-full h-full absolute"
+              resizeMode="cover"
+            />
+          )}
+
+          {/* Like Heart Pop-up */}
+          <View className="absolute inset-0 justify-center items-center pointer-events-none">
+            <Animated.View style={heartStyle}>
+              <Heart color="#FA8900" size={100} fill="#FA8900" />
+            </Animated.View>
+          </View>
+        </Pressable>
+
+        {/* 2. Bottom Gradient Overlay (Title, Host, etc.) */}
+        {/* pointerEvents="box-none" ensures clicks pass through empty spaces */}
         <LinearGradient
           colors={[
             "transparent",
@@ -126,16 +202,17 @@ const EventFeedCard = ({
             "rgba(0,0,0,0.95)",
           ]}
           className="absolute bottom-0 left-0 right-0 px-5 pb-6 pt-32 justify-end z-20"
+          pointerEvents="box-none"
         >
           {/* Title */}
-          <TouchableOpacity onPress={onViewEvent} activeOpacity={0.8}>
+          <View>
             <Text
               className="text-white text-4xl font-bold mb-3 leading-tight shadow-black"
               style={{ fontFamily: "Jost-Medium" }}
             >
               {title}
             </Text>
-          </TouchableOpacity>
+          </View>
 
           {/* Host Info Row */}
           <View className="flex-row items-center justify-between mb-6">
@@ -192,30 +269,100 @@ const EventFeedCard = ({
             </LinearGradient>
           </TouchableOpacity>
         </LinearGradient>
+
+        {/* Social Button (Top Right) */}
+        {showSocial && (
+          <TouchableOpacity
+            onPress={onOpenSocial}
+            activeOpacity={0.8}
+            style={{ zIndex: 50 }}
+            className="absolute top-6 right-4 items-center"
+          >
+            <LinearGradient
+              {...fireGradient}
+              className="w-16 h-16 rounded-full items-center justify-center shadow-lg shadow-black/60 border-2 border-white/20"
+            >
+              <Users color="white" size={28} fill="white" />
+            </LinearGradient>
+            <View className="bg-black/80 px-3 py-1 rounded-full mt-[-10px] border border-white/20">
+              <Text className="text-white text-xs font-bold">
+                +{attendeesCount}
+              </Text>
+            </View>
+          </TouchableOpacity>
+        )}
       </View>
 
-      {/* Social Button */}
-      {showSocial && (
-        <TouchableOpacity
-          onPress={onOpenSocial}
-          activeOpacity={0.8}
-          style={{ zIndex: 50 }}
-          className="absolute top-6 right-4 items-center"
-        >
-          <LinearGradient
-            {...fireGradient}
-            className="w-16 h-16 rounded-full items-center justify-center shadow-lg shadow-black/60 border-2 border-white/20"
+      {/* --- FULL SCREEN MODAL --- */}
+      <Modal
+        visible={isFullScreen}
+        animationType="fade"
+        transparent={false}
+        onRequestClose={() => setIsFullScreen(false)}
+      >
+        <View className="flex-1 bg-black">
+          <StatusBar hidden />
+
+          {/* Close Button */}
+          <TouchableOpacity
+            onPress={() => setIsFullScreen(false)}
+            className="absolute top-12 right-6 z-50 bg-black/50 p-2 rounded-full"
           >
-            <Users color="white" size={28} fill="white" />
-          </LinearGradient>
-          <View className="bg-black/80 px-3 py-1 rounded-full mt-[-10px] border border-white/20">
-            <Text className="text-white text-xs font-bold">
-              +{attendeesCount}
-            </Text>
+            <X color="white" size={28} />
+          </TouchableOpacity>
+
+          {/* Mute Toggle (Optional for UX) */}
+          <TouchableOpacity
+            onPress={() => setIsMuted(!isMuted)}
+            className="absolute top-12 left-6 z-50 bg-black/50 p-2 rounded-full"
+          >
+            {isMuted ? (
+              <VolumeX color="white" size={24} />
+            ) : (
+              <Volume2 color="white" size={24} />
+            )}
+          </TouchableOpacity>
+
+          {/* Carousel Content */}
+          <FlatList
+            data={carouselData}
+            keyExtractor={(_, index) => index.toString()}
+            renderItem={renderFullScreenItem}
+            horizontal
+            pagingEnabled
+            showsHorizontalScrollIndicator={false}
+            onViewableItemsChanged={onViewableItemsChanged}
+            viewabilityConfig={viewabilityConfig}
+            className="flex-1"
+          />
+
+          {/* Bottom Button Only (No Title/Host) */}
+          <View className="absolute bottom-10 left-6 right-6">
+            <TouchableOpacity
+              onPress={() => {
+                setIsFullScreen(false); // Close modal first? Or go straight to event?
+                onViewEvent();
+              }}
+              activeOpacity={0.9}
+              className="w-full shadow-lg shadow-orange-500/30"
+            >
+              <LinearGradient
+                {...fireGradient}
+                className="w-full py-4 rounded-full flex-row items-center justify-center border border-white/10"
+              >
+                <Text
+                  className="text-white text-xl font-bold tracking-wide mr-2"
+                  style={{ fontFamily: "Jost-Medium" }}
+                >
+                  VIEW EVENT
+                </Text>
+                <ArrowRight color="white" size={20} strokeWidth={2.5} />
+              </LinearGradient>
+            </TouchableOpacity>
           </View>
-        </TouchableOpacity>
-      )}
-    </View>
+        </View>
+      </Modal>
+    </>
   );
 };
 
