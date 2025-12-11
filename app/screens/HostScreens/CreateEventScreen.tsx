@@ -7,11 +7,13 @@ import {
   StyleSheet,
   ScrollView,
   Image,
-  Switch,
   Alert,
   ActivityIndicator,
   Modal,
   FlatList,
+  LayoutAnimation,
+  Platform,
+  UIManager,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
@@ -32,6 +34,9 @@ import {
   Ticket,
   Plus,
   Pencil,
+  Hash,
+  DollarSign,
+  Sparkles,
 } from "lucide-react-native";
 import * as ImagePicker from "expo-image-picker";
 import { KeyboardAwareScrollView } from "react-native-keyboard-aware-scroll-view";
@@ -47,6 +52,45 @@ import { useAuth } from "../../context/AuthContext";
 import HostTopBanner from "../../components/HostTopBanner";
 import { bannerGradient, electricGradient } from "../../styles/colours";
 
+// Enable LayoutAnimation for Android
+if (
+  Platform.OS === "android" &&
+  UIManager.setLayoutAnimationEnabledExperimental
+) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
+
+// --- CUSTOM SWITCH COMPONENT ---
+const CustomSwitch = ({
+  value,
+  onValueChange,
+}: {
+  value: boolean;
+  onValueChange: (val: boolean) => void;
+}) => {
+  const toggleSwitch = () => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    onValueChange(!value);
+  };
+
+  return (
+    <TouchableOpacity
+      activeOpacity={0.8}
+      onPress={toggleSwitch}
+      // You can adjust w-16 h-9 if you want it even bigger/smaller
+      className={`w-16 h-9 rounded-full justify-center px-1 ${
+        value ? "bg-[#4ade80]" : "bg-[#3A3A3A]"
+      }`}
+    >
+      <View
+        className={`w-7 h-7 bg-white rounded-full shadow-sm ${
+          value ? "self-end" : "self-start"
+        }`}
+      />
+    </TouchableOpacity>
+  );
+};
+
 // --- HELPER COMPONENTS ---
 const InputField = ({
   icon,
@@ -57,11 +101,11 @@ const InputField = ({
   keyboardType = "default",
 }: any) => (
   <View
-    className={`flex-row items-start bg-white/5 border border-white/10 rounded-xl px-4 mb-4 ${
-      multiline ? "h-32 py-3" : "h-14 items-center"
+    className={`flex-row items-start bg-white/5 border border-white/10 rounded-2xl px-4 mb-4 ${
+      multiline ? "h-32 py-4" : "h-16 items-center"
     }`}
   >
-    <View className={`mr-3 opacity-70 ${multiline ? "mt-1" : ""}`}>{icon}</View>
+    <View className={`mr-4 opacity-70 ${multiline ? "mt-1" : ""}`}>{icon}</View>
     <TextInput
       placeholder={placeholder}
       placeholderTextColor="#6b7280"
@@ -79,9 +123,9 @@ const InputField = ({
 const SelectorButton = ({ icon, label, value, onPress, placeholder }: any) => (
   <TouchableOpacity
     onPress={onPress}
-    className="flex-1 flex-row items-center bg-white/5 border border-white/10 rounded-xl px-4 h-14 mb-4"
+    className="flex-1 flex-row items-center bg-white/5 border border-white/10 rounded-2xl px-4 h-16 mb-4"
   >
-    <View className="mr-3 opacity-70">{icon}</View>
+    <View className="mr-4 opacity-70">{icon}</View>
     <Text
       className={`text-lg font-medium ${
         value ? "text-white" : "text-gray-500"
@@ -134,6 +178,14 @@ const AVAILABLE_TAGS = [
   "Networking",
 ];
 
+// --- TYPES ---
+type TicketTier = {
+  name: string;
+  price: string;
+  quantity: string;
+  active: boolean;
+};
+
 const CreateEventScreen = () => {
   const navigation = useNavigation();
   const { user } = useAuth();
@@ -144,9 +196,21 @@ const CreateEventScreen = () => {
   const [isPublic, setIsPublic] = useState(true);
 
   // Tickets State
-  const [tickets, setTickets] = useState([
-    { name: "General Admission", price: "" },
+  const [tickets, setTickets] = useState<TicketTier[]>([
+    { name: "General Admission", price: "150", quantity: "100", active: true },
   ]);
+
+  // Ticket Modal State
+  const [showTicketModal, setShowTicketModal] = useState(false);
+  const [editingTicketIndex, setEditingTicketIndex] = useState<number | null>(
+    null
+  );
+  const [tempTicket, setTempTicket] = useState<TicketTier>({
+    name: "",
+    price: "",
+    quantity: "",
+    active: true,
+  });
 
   const [mediaItems, setMediaItems] = useState<
     { uri: string; type: "image" | "video" }[]
@@ -178,15 +242,12 @@ const CreateEventScreen = () => {
   const todayDateString = new Date().toISOString().split("T")[0];
 
   const availableTimes = useMemo(() => {
-    // If selecting start time for TODAY, filter out past hours
     if (activeTimeModal === "start" && startDate === todayDateString) {
       const now = new Date();
       const currentMinutes = now.getHours() * 60 + now.getMinutes();
-
       return ALL_TIMES.filter((t) => {
         const [h, m] = t.split(":").map(Number);
-        const timeMinutes = h * 60 + m;
-        return timeMinutes > currentMinutes;
+        return h * 60 + m > currentMinutes;
       });
     }
     return ALL_TIMES;
@@ -194,7 +255,6 @@ const CreateEventScreen = () => {
 
   // --- HANDLERS ---
 
-  // Modified to handle Adding OR Replacing
   const handlePickMedia = async (replaceIndex?: number) => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== "granted") {
@@ -212,20 +272,16 @@ const CreateEventScreen = () => {
 
     if (!result.canceled) {
       const newAsset = result.assets[0];
-
-      // ✅ FIX: Explicitly tell TS this object matches the required type
       const newItem: { uri: string; type: "image" | "video" } = {
         uri: newAsset.uri,
         type: newAsset.type === "video" ? "video" : "image",
       };
 
       if (replaceIndex !== undefined) {
-        // REPLACE existing item
         const updated = [...mediaItems];
         updated[replaceIndex] = newItem;
         setMediaItems(updated);
       } else {
-        // ADD new item
         setMediaItems([...mediaItems, newItem]);
       }
     }
@@ -237,25 +293,41 @@ const CreateEventScreen = () => {
     setMediaItems(updated);
   };
 
-  // Ticket Handlers
-  const addTicketTier = () => {
-    setTickets([...tickets, { name: "", price: "" }]);
+  // --- TICKET HANDLERS ---
+  const openTicketModal = (index?: number) => {
+    if (index !== undefined) {
+      setEditingTicketIndex(index);
+      setTempTicket({ ...tickets[index] });
+    } else {
+      setEditingTicketIndex(null);
+      setTempTicket({ name: "", price: "", quantity: "", active: true });
+    }
+    setShowTicketModal(true);
   };
 
-  const removeTicketTier = (index: number) => {
+  const saveTicket = () => {
+    if (!tempTicket.name || !tempTicket.price) {
+      Alert.alert("Missing Info", "Please enter a ticket name and price.");
+      return;
+    }
+
     const updated = [...tickets];
-    updated.splice(index, 1);
+    if (editingTicketIndex !== null) {
+      updated[editingTicketIndex] = tempTicket;
+    } else {
+      updated.push(tempTicket);
+    }
     setTickets(updated);
+    setShowTicketModal(false);
   };
 
-  const updateTicket = (
-    index: number,
-    field: "name" | "price",
-    value: string
-  ) => {
-    const updated = [...tickets];
-    updated[index] = { ...updated[index], [field]: value };
-    setTickets(updated);
+  const deleteTicket = () => {
+    if (editingTicketIndex !== null) {
+      const updated = [...tickets];
+      updated.splice(editingTicketIndex, 1);
+      setTickets(updated);
+      setShowTicketModal(false);
+    }
   };
 
   const toggleTag = (tag: string) => {
@@ -317,7 +389,7 @@ const CreateEventScreen = () => {
         tags: selectedTags,
         is_public: isPublic,
         category: selectedTags[0] || "Other",
-        ticket_tiers: tickets, // Save tickets JSON
+        ticket_tiers: tickets, // Save full ticket object
       });
 
       if (error) throw error;
@@ -339,7 +411,6 @@ const CreateEventScreen = () => {
       <HostTopBanner />
 
       <SafeAreaView className="flex-1" edges={["left", "right"]}>
-        {/* ✅ CONTROL SCREEN MOVEMENT HERE: Increase 'extraScrollHeight' to push content higher */}
         <KeyboardAwareScrollView
           className="flex-1 px-6"
           showsVerticalScrollIndicator={false}
@@ -369,7 +440,6 @@ const CreateEventScreen = () => {
             showsHorizontalScrollIndicator={false}
             className="mb-8"
           >
-            {/* Add Button */}
             <TouchableOpacity
               onPress={() => handlePickMedia()}
               className="w-32 h-40 bg-white/5 border-2 border-dashed border-white/20 rounded-2xl items-center justify-center mr-3"
@@ -380,12 +450,11 @@ const CreateEventScreen = () => {
               <Text className="text-gray-400 text-xs font-bold">Add Media</Text>
             </TouchableOpacity>
 
-            {/* List Items */}
             {mediaItems.map((item, index) => (
               <TouchableOpacity
                 key={index}
                 activeOpacity={0.8}
-                onPress={() => handlePickMedia(index)} // ✅ Tap to Replace
+                onPress={() => handlePickMedia(index)}
                 className="relative mr-3"
               >
                 {item.type === "video" ? (
@@ -408,30 +477,20 @@ const CreateEventScreen = () => {
                     resizeMode="cover"
                   />
                 )}
-
-                {/* Remove Button */}
                 <TouchableOpacity
                   onPress={() => removeMedia(index)}
                   className="absolute top-2 right-2 bg-red-500/80 p-1.5 rounded-full z-10"
                 >
                   <X color="white" size={12} />
                 </TouchableOpacity>
-
-                {/* Edit Indicator */}
                 <View className="absolute bottom-2 right-2 bg-black/60 p-1.5 rounded-full">
                   <Pencil color="white" size={12} />
                 </View>
-
                 {index === 0 && (
                   <View className="absolute bottom-2 left-2 bg-purple-600 px-2 py-0.5 rounded">
                     <Text className="text-white text-[10px] font-bold">
                       COVER
                     </Text>
-                  </View>
-                )}
-                {item.type === "video" && (
-                  <View className="absolute top-1/2 left-1/2 -ml-3 -mt-3 pointer-events-none">
-                    <VideoIcon color="white" size={24} />
                   </View>
                 )}
               </TouchableOpacity>
@@ -508,73 +567,110 @@ const CreateEventScreen = () => {
             multiline={true}
           />
 
-          {/* 3. TICKET TIERS */}
-          <View className="mb-6">
-            <Text className="text-white text-xl font-bold mb-3">
-              Ticket Tiers
-            </Text>
+          {/* 3. TICKET TIERS SECTION */}
+          <View className="mb-8">
+            <View className="flex-row justify-between items-end mb-4">
+              <Text className="text-white text-xl font-bold">Ticket Tiers</Text>
+              <Text className="text-gray-400 text-xs font-bold uppercase tracking-wider">
+                {tickets.length} Types
+              </Text>
+            </View>
+
+            {/* Ticket Cards List */}
             {tickets.map((ticket, index) => (
-              <View key={index} className="flex-row gap-2 mb-3 items-center">
-                {/* Name Input */}
-                <View className="flex-[2] flex-row items-center bg-white/5 border border-white/10 rounded-xl px-3 h-12">
-                  <Ticket color="#999" size={16} className="mr-2" />
-                  <TextInput
-                    placeholder="Tier Name (e.g. VIP)"
-                    placeholderTextColor="#666"
-                    value={ticket.name}
-                    onChangeText={(text) => updateTicket(index, "name", text)}
-                    className="flex-1 text-white text-base font-medium"
-                  />
+              <TouchableOpacity
+                key={index}
+                onPress={() => openTicketModal(index)}
+                activeOpacity={0.7}
+                // ✅ CONDITIONAL STYLING: Green highlight if Active, else Standard dark
+                className={`rounded-2xl p-5 mb-3 flex-row items-center justify-between border ${
+                  ticket.active
+                    ? "bg-green-500/10 border-green-500/30"
+                    : "bg-white/5 border-white/10"
+                }`}
+              >
+                <View className="flex-1">
+                  <View className="flex-row items-center mb-2">
+                    {/* Icon Changes Color too */}
+                    <Ticket
+                      color={ticket.active ? "#4ade80" : "white"}
+                      size={20}
+                      className="mr-3"
+                    />
+
+                    <Text
+                      className={`text-xl font-bold mr-3 ml-2 ${
+                        ticket.active ? "text-white" : "text-gray-400"
+                      }`}
+                    >
+                      {ticket.name}
+                    </Text>
+
+                    {!ticket.active && (
+                      <View className="bg-red-500/20 px-2 py-0.5 ml-2 rounded border border-red-500/50">
+                        <Text className="text-red-400 text-[10px] font-bold uppercase">
+                          Inactive
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                  <View className="flex-row items-center pl-8">
+                    <Tag color="#666" size={14} className="mr-1" />
+                    <Text className="text-gray-400 text-sm font-medium mr-4 ml-1">
+                      {ticket.quantity
+                        ? `${ticket.quantity} Left`
+                        : "Unlimited"}
+                    </Text>
+                  </View>
                 </View>
 
-                {/* Price Input */}
-                <View className="flex-1 flex-row items-center bg-white/5 border border-white/10 rounded-xl px-3 h-12">
-                  <Text className="text-gray-400 mr-1">R</Text>
-                  <TextInput
-                    placeholder="Price"
-                    placeholderTextColor="#666"
-                    value={ticket.price}
-                    keyboardType="numeric"
-                    onChangeText={(text) => updateTicket(index, "price", text)}
-                    className="flex-1 text-white text-base font-medium"
-                  />
-                </View>
-
-                {/* Remove Button */}
-                {tickets.length > 1 && (
-                  <TouchableOpacity
-                    onPress={() => removeTicketTier(index)}
-                    className="bg-red-500/20 p-3 rounded-xl border border-red-500/50"
+                {/* Price Badge */}
+                <View
+                  className={`px-4 py-2 rounded-xl border ml-3 ${
+                    ticket.active
+                      ? "bg-black/40 border-green-500/20"
+                      : "bg-black/40 border-white/5"
+                  }`}
+                >
+                  <Text
+                    className={`text-lg font-bold ${
+                      ticket.active ? "text-green-400" : "text-white"
+                    }`}
                   >
-                    <Trash2 color="#FF4444" size={20} />
-                  </TouchableOpacity>
-                )}
-              </View>
+                    R {ticket.price}
+                  </Text>
+                </View>
+              </TouchableOpacity>
             ))}
 
-            {/* Add Tier Button */}
+            {/* Add New Button */}
             <TouchableOpacity
-              onPress={addTicketTier}
-              className="flex-row items-center justify-center bg-white/10 border border-white/10 border-dashed rounded-xl py-3 mt-1"
+              onPress={() => openTicketModal()}
+              className="flex-row items-center justify-center bg-white/5 border border-dashed border-white/30 rounded-2xl py-5 mt-2"
             >
-              <Plus color="#D087FF" size={20} className="mr-2" />
-              <Text className="text-purple-300 font-bold">Add Ticket Tier</Text>
+              <View className="bg-purple-500/20 p-2 rounded-full mr-3">
+                <Plus color="#D087FF" size={20} />
+              </View>
+              <Text className="text-purple-300 font-bold text-lg">
+                Add Ticket Tier
+              </Text>
             </TouchableOpacity>
           </View>
 
-          <View className="flex-row justify-between items-center bg-white/5 p-4 rounded-xl mb-8">
-            <Text className="text-white font-bold text-lg">Public Event</Text>
-            <Switch
-              value={isPublic}
-              onValueChange={setIsPublic}
-              trackColor={{ false: "#767577", true: "#D087FF" }}
-              thumbColor={"#f4f3f4"}
-            />
+          {/* PUBLIC SWITCH */}
+          <View className="flex-row justify-between items-center bg-white/5 p-5 rounded-2xl mb-8 border border-white/5">
+            <View>
+              <Text className="text-white font-bold text-lg">Public Event</Text>
+              <Text className="text-gray-400 text-xs mt-1">
+                Visible to everyone on the map
+              </Text>
+            </View>
+            <CustomSwitch value={isPublic} onValueChange={setIsPublic} />
           </View>
         </KeyboardAwareScrollView>
 
         {/* PUBLISH BUTTON */}
-        <View className="absolute bottom-0 left-0 right-0 p-6 bg-[#121212]/90 border-t border-white/10">
+        <View className="absolute bottom-0 left-0 right-0 p-6 bg-[#121212]/95 border-t border-white/10 blur-xl">
           <TouchableOpacity
             activeOpacity={0.8}
             className="w-full shadow-lg shadow-purple-500/30"
@@ -583,7 +679,7 @@ const CreateEventScreen = () => {
           >
             <LinearGradient
               {...electricGradient}
-              className="w-full py-4 rounded-full items-center justify-center"
+              className="w-full py-5 rounded-full items-center justify-center"
             >
               {loading ? (
                 <ActivityIndicator color="white" />
@@ -600,7 +696,219 @@ const CreateEventScreen = () => {
         </View>
       </SafeAreaView>
 
-      {/* --- CATEGORY PICKER MODAL --- */}
+      {/* --- TICKET MODAL --- */}
+      <Modal visible={showTicketModal} transparent animationType="slide">
+        <View className="flex-1 justify-end bg-black/60">
+          {/* Main Modal Container */}
+          <View className="h-[85%] bg-[#121212] rounded-t-[40px] overflow-hidden border-t border-white/20 shadow-2xl shadow-purple-500/20">
+            {/* 1. GRADIENT HEADER */}
+            <LinearGradient
+              colors={["#240b36", "#121212"]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 0, y: 1 }}
+              className="px-6 pt-8 pb-6 border-b border-white/5"
+            >
+              <View className="flex-row justify-between items-center">
+                <View>
+                  <Text className="text-white text-3xl font-bold mb-1">
+                    {editingTicketIndex !== null ? "Edit Ticket" : "New Ticket"}
+                  </Text>
+                  <Text className="text-purple-300 font-medium">
+                    Configure availability & pricing
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  onPress={() => setShowTicketModal(false)}
+                  className="bg-white/10 p-3 rounded-full backdrop-blur-md"
+                >
+                  <X color="white" size={24} />
+                </TouchableOpacity>
+              </View>
+            </LinearGradient>
+
+            {/* 2. FORM CONTENT */}
+            <ScrollView
+              className="flex-1 px-6 pt-8"
+              contentContainerStyle={{ paddingBottom: 100 }}
+            >
+              {/* Name Input */}
+              <View className="mb-6">
+                <Text className="text-gray-400 font-bold mb-3 ml-2 uppercase tracking-wide text-xs">
+                  Ticket Name
+                </Text>
+                <View className="flex-row items-center bg-[#1E1E1E] border border-white/10 rounded-3xl px-5 h-20 shadow-lg">
+                  <View className="bg-purple-500/20 p-3 rounded-full mr-4">
+                    <Ticket color="#D087FF" size={24} />
+                  </View>
+                  <TextInput
+                    placeholder="e.g. Early Bird, VIP Access"
+                    placeholderTextColor="#555"
+                    value={tempTicket.name}
+                    onChangeText={(t) =>
+                      setTempTicket({ ...tempTicket, name: t })
+                    }
+                    className="flex-1 text-white text-xl font-bold h-full mb-1"
+                  />
+                </View>
+              </View>
+
+              {/* Price & Quantity Grid */}
+              <View className="flex-row gap-4 mb-6">
+                {/* Price */}
+                <View className="flex-1">
+                  <Text className="text-gray-400 font-bold mb-3 ml-2 uppercase tracking-wide text-xs">
+                    Price
+                  </Text>
+                  <View className="flex-row items-center bg-[#1E1E1E] border border-white/10 rounded-3xl px-4 h-20 shadow-lg">
+                    <Text className="text-gray-500 text-2xl font-bold mr-2">
+                      R
+                    </Text>
+                    <TextInput
+                      placeholder="0"
+                      placeholderTextColor="#555"
+                      keyboardType="numeric"
+                      value={tempTicket.price}
+                      onChangeText={(t) =>
+                        setTempTicket({ ...tempTicket, price: t })
+                      }
+                      className="flex-1 text-white text-2xl font-bold h-full mb-1"
+                    />
+                  </View>
+                </View>
+
+                {/* Quantity */}
+                <View className="flex-1">
+                  <Text className="text-gray-400 font-bold mb-3 ml-2 uppercase tracking-wide text-xs">
+                    Quantity
+                  </Text>
+                  <View className="flex-row items-center bg-[#1E1E1E] border border-white/10 rounded-3xl px-4 h-20 shadow-lg">
+                    <View className="bg-orange-500/20 p-2 rounded-full mr-3">
+                      <Hash color="#FFA500" size={18} />
+                    </View>
+                    <TextInput
+                      placeholder="∞"
+                      placeholderTextColor="#555"
+                      keyboardType="numeric"
+                      value={tempTicket.quantity}
+                      onChangeText={(t) =>
+                        setTempTicket({ ...tempTicket, quantity: t })
+                      }
+                      className="flex-1 text-white text-xl font-bold h-full mb-2"
+                    />
+                  </View>
+                </View>
+              </View>
+
+              {/* Status Card */}
+              <View className="mb-8">
+                <Text className="text-gray-400 font-bold mb-3 ml-2 uppercase tracking-wide text-xs">
+                  Availability
+                </Text>
+                <TouchableOpacity
+                  activeOpacity={0.9}
+                  onPress={() =>
+                    setTempTicket({ ...tempTicket, active: !tempTicket.active })
+                  }
+                  className={`p-1 rounded-3xl border ${
+                    tempTicket.active
+                      ? "border-green-500/30 bg-green-900/10"
+                      : "border-red-500/30 bg-red-900/10"
+                  }`}
+                >
+                  <LinearGradient
+                    colors={
+                      tempTicket.active
+                        ? ["rgba(34, 197, 94, 0.1)", "rgba(34, 197, 94, 0.05)"]
+                        : ["rgba(239, 68, 68, 0.1)", "rgba(239, 68, 68, 0.05)"]
+                    }
+                    className="p-5 rounded-[20px] flex-row items-center justify-between"
+                  >
+                    <View className="flex-row items-center">
+                      <View
+                        className={`p-3 rounded-full mr-4 ${
+                          tempTicket.active
+                            ? "bg-green-500/20"
+                            : "bg-red-500/20"
+                        }`}
+                      >
+                        <Sparkles
+                          color={tempTicket.active ? "#4ade80" : "#f87171"}
+                          size={24}
+                          fill={tempTicket.active ? "#4ade80" : "none"}
+                        />
+                      </View>
+                      <View>
+                        <Text
+                          className={`text-xl font-bold ${
+                            tempTicket.active
+                              ? "text-green-400"
+                              : "text-red-400"
+                          }`}
+                        >
+                          {tempTicket.active
+                            ? "Ticket is Active"
+                            : "Ticket Paused"}
+                        </Text>
+                        <Text className="text-gray-400 text-xs">
+                          {tempTicket.active
+                            ? "Attendees can purchase this ticket."
+                            : "Hidden from attendees."}
+                        </Text>
+                      </View>
+                    </View>
+                    <CustomSwitch
+                      value={tempTicket.active}
+                      onValueChange={(v) =>
+                        setTempTicket({ ...tempTicket, active: v })
+                      }
+                    />
+                  </LinearGradient>
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
+
+            {/* 3. FOOTER ACTIONS */}
+            <View className="absolute bottom-0 left-0 right-0 p-6 bg-[#121212] border-t border-white/10">
+              <View className="flex-row gap-4">
+                {/* Delete Button (Only if editing) */}
+                {editingTicketIndex !== null && (
+                  <TouchableOpacity
+                    onPress={deleteTicket}
+                    className="flex-1 bg-red-500/10 border border-red-500/30 rounded-3xl items-center justify-center h-16"
+                  >
+                    <Trash2 color="#f87171" size={24} />
+                  </TouchableOpacity>
+                )}
+
+                {/* Main Save Button */}
+                <TouchableOpacity
+                  onPress={saveTicket}
+                  className={`${
+                    editingTicketIndex !== null ? "flex-[3]" : "flex-1"
+                  } shadow-lg shadow-purple-500/40`}
+                >
+                  <LinearGradient
+                    {...electricGradient}
+                    className="w-full h-16 rounded-3xl flex-row items-center justify-center"
+                  >
+                    <Check
+                      color="white"
+                      size={24}
+                      strokeWidth={3}
+                      className="mr-2"
+                    />
+                    <Text className="text-white text-xl font-bold">
+                      Save Ticket
+                    </Text>
+                  </LinearGradient>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* --- CATEGORY PICKER --- */}
       <Modal visible={showCategoryPicker} transparent animationType="slide">
         <View className="flex-1 justify-end bg-black/80">
           <View className="bg-[#1E1E1E] rounded-t-3xl h-[80%] overflow-hidden">
@@ -666,7 +974,6 @@ const CreateEventScreen = () => {
                 <X color="white" size={24} />
               </TouchableOpacity>
             </View>
-            {/* ✅ MINIMUM DATE: Prevents past dates */}
             <RNCalendar
               minDate={todayDateString}
               onDayPress={(day: any) => {
@@ -683,7 +990,7 @@ const CreateEventScreen = () => {
                 selectedDayTextColor: "#ffffff",
                 monthTextColor: "white",
                 arrowColor: "#D087FF",
-                textDisabledColor: "#444", // Color for past dates
+                textDisabledColor: "#444",
               }}
             />
           </View>
@@ -705,14 +1012,8 @@ const CreateEventScreen = () => {
               </TouchableOpacity>
             </View>
             <FlatList
-              data={availableTimes} // ✅ Uses the filtered list
+              data={availableTimes}
               keyExtractor={(item) => item}
-              initialScrollIndex={0}
-              getItemLayout={(data, index) => ({
-                length: 60,
-                offset: 60 * index,
-                index,
-              })}
               renderItem={({ item }) => (
                 <TouchableOpacity
                   onPress={() => {
