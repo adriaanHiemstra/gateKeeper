@@ -35,7 +35,6 @@ import {
   Plus,
   Pencil,
   Hash,
-  DollarSign,
   Sparkles,
 } from "lucide-react-native";
 import * as ImagePicker from "expo-image-picker";
@@ -77,7 +76,6 @@ const CustomSwitch = ({
     <TouchableOpacity
       activeOpacity={0.8}
       onPress={toggleSwitch}
-      // You can adjust w-16 h-9 if you want it even bigger/smaller
       className={`w-16 h-9 rounded-full justify-center px-1 ${
         value ? "bg-[#4ade80]" : "bg-[#3A3A3A]"
       }`}
@@ -411,12 +409,15 @@ const CreateEventScreen = () => {
       <HostTopBanner />
 
       <SafeAreaView className="flex-1" edges={["left", "right"]}>
+        {/* ✅ MAIN SCREEN SCROLLER: Increased extraScrollHeight & tuned props */}
         <KeyboardAwareScrollView
           className="flex-1 px-6"
           showsVerticalScrollIndicator={false}
           contentContainerStyle={{ paddingTop: 120, paddingBottom: 140 }}
           enableOnAndroid={true}
-          extraScrollHeight={150}
+          extraScrollHeight={120} // Slightly increased to push Description higher
+          keyboardShouldPersistTaps="handled"
+          enableAutomaticScroll={true}
         >
           <View className="flex-row items-center mb-8">
             <TouchableOpacity
@@ -726,10 +727,13 @@ const CreateEventScreen = () => {
               </View>
             </LinearGradient>
 
-            {/* 2. FORM CONTENT */}
-            <ScrollView
+            {/* 2. FORM CONTENT - ✅ REPLACED ScrollView WITH KeyboardAwareScrollView */}
+            <KeyboardAwareScrollView
               className="flex-1 px-6 pt-8"
               contentContainerStyle={{ paddingBottom: 100 }}
+              enableOnAndroid={true}
+              extraScrollHeight={100}
+              keyboardShouldPersistTaps="handled"
             >
               {/* Name Input */}
               <View className="mb-6">
@@ -865,7 +869,7 @@ const CreateEventScreen = () => {
                   </LinearGradient>
                 </TouchableOpacity>
               </View>
-            </ScrollView>
+            </KeyboardAwareScrollView>
 
             {/* 3. FOOTER ACTIONS */}
             <View className="absolute bottom-0 left-0 right-0 p-6 bg-[#121212] border-t border-white/10">
