@@ -193,6 +193,9 @@ const HomeScreen = () => {
                 id={item.id}
                 title={item.title}
                 hostName={item.profiles?.username || "Unknown Host"}
+                // ✅ FIX 1: Use 'item' instead of 'event'
+                // ✅ FIX 2: Add '|| []' fallback so it never crashes if empty
+                mediaItems={item.images || []}
                 hostAvatar={
                   item.profiles?.avatar_url
                     ? { uri: item.profiles.avatar_url }
@@ -206,8 +209,8 @@ const HomeScreen = () => {
                 attendeesCount={12}
                 // Actions
                 onOpenSocial={() => openPanel([], item.title)}
-                onPressHost={() => navigation.navigate("EventHostProfile")} // Go to Host Profile
-                onViewEvent={() => goToEventProfile(item)} // Go to Event Profile
+                onPressHost={() => navigation.navigate("EventHostProfile")}
+                onViewEvent={() => goToEventProfile(item)}
               />
             )}
             ListEmptyComponent={
