@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import {
   View,
   Text,
@@ -23,13 +23,15 @@ import {
   ImagePlus,
   Clock,
   Type,
-  Plus,
   Trash2,
   X,
   Search,
   Check,
   Tag,
   Video as VideoIcon,
+  Ticket,
+  Plus,
+  Pencil,
 } from "lucide-react-native";
 import * as ImagePicker from "expo-image-picker";
 import { KeyboardAwareScrollView } from "react-native-keyboard-aware-scroll-view";
@@ -93,7 +95,7 @@ const SelectorButton = ({ icon, label, value, onPress, placeholder }: any) => (
 );
 
 // --- DATA ---
-const TIMES = Array.from({ length: 48 }).map((_, i) => {
+const ALL_TIMES = Array.from({ length: 48 }).map((_, i) => {
   const h = Math.floor(i / 2);
   const m = i % 2 === 0 ? "00" : "30";
   return `${h.toString().padStart(2, "0")}:${m}`;
@@ -141,6 +143,11 @@ const CreateEventScreen = () => {
   const [description, setDescription] = useState("");
   const [isPublic, setIsPublic] = useState(true);
 
+  // Tickets State
+  const [tickets, setTickets] = useState([
+    { name: "General Admission", price: "" },
+  ]);
+
   const [mediaItems, setMediaItems] = useState<
     { uri: string; type: "image" | "video" }[]
   >([]);
@@ -167,9 +174,28 @@ const CreateEventScreen = () => {
 
   const [loading, setLoading] = useState(false);
 
+  // --- LOGIC: Filter Past Times ---
+  const todayDateString = new Date().toISOString().split("T")[0];
+
+  const availableTimes = useMemo(() => {
+    // If selecting start time for TODAY, filter out past hours
+    if (activeTimeModal === "start" && startDate === todayDateString) {
+      const now = new Date();
+      const currentMinutes = now.getHours() * 60 + now.getMinutes();
+
+      return ALL_TIMES.filter((t) => {
+        const [h, m] = t.split(":").map(Number);
+        const timeMinutes = h * 60 + m;
+        return timeMinutes > currentMinutes;
+      });
+    }
+    return ALL_TIMES;
+  }, [activeTimeModal, startDate]);
+
   // --- HANDLERS ---
 
-  const handlePickMedia = async () => {
+  // Modified to handle Adding OR Replacing
+  const handlePickMedia = async (replaceIndex?: number) => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== "granted") {
       Alert.alert("Permission needed", "We need access to your photos.");
@@ -186,13 +212,22 @@ const CreateEventScreen = () => {
 
     if (!result.canceled) {
       const newAsset = result.assets[0];
-      setMediaItems([
-        ...mediaItems,
-        {
-          uri: newAsset.uri,
-          type: newAsset.type === "video" ? "video" : "image",
-        },
-      ]);
+
+      // ✅ FIX: Explicitly tell TS this object matches the required type
+      const newItem: { uri: string; type: "image" | "video" } = {
+        uri: newAsset.uri,
+        type: newAsset.type === "video" ? "video" : "image",
+      };
+
+      if (replaceIndex !== undefined) {
+        // REPLACE existing item
+        const updated = [...mediaItems];
+        updated[replaceIndex] = newItem;
+        setMediaItems(updated);
+      } else {
+        // ADD new item
+        setMediaItems([...mediaItems, newItem]);
+      }
     }
   };
 
@@ -200,6 +235,27 @@ const CreateEventScreen = () => {
     const updated = [...mediaItems];
     updated.splice(index, 1);
     setMediaItems(updated);
+  };
+
+  // Ticket Handlers
+  const addTicketTier = () => {
+    setTickets([...tickets, { name: "", price: "" }]);
+  };
+
+  const removeTicketTier = (index: number) => {
+    const updated = [...tickets];
+    updated.splice(index, 1);
+    setTickets(updated);
+  };
+
+  const updateTicket = (
+    index: number,
+    field: "name" | "price",
+    value: string
+  ) => {
+    const updated = [...tickets];
+    updated[index] = { ...updated[index], [field]: value };
+    setTickets(updated);
   };
 
   const toggleTag = (tag: string) => {
@@ -261,6 +317,7 @@ const CreateEventScreen = () => {
         tags: selectedTags,
         is_public: isPublic,
         category: selectedTags[0] || "Other",
+        ticket_tiers: tickets, // Save tickets JSON
       });
 
       if (error) throw error;
@@ -282,12 +339,13 @@ const CreateEventScreen = () => {
       <HostTopBanner />
 
       <SafeAreaView className="flex-1" edges={["left", "right"]}>
+        {/* ✅ CONTROL SCREEN MOVEMENT HERE: Increase 'extraScrollHeight' to push content higher */}
         <KeyboardAwareScrollView
           className="flex-1 px-6"
           showsVerticalScrollIndicator={false}
           contentContainerStyle={{ paddingTop: 120, paddingBottom: 140 }}
           enableOnAndroid={true}
-          extraScrollHeight={100}
+          extraScrollHeight={150}
         >
           <View className="flex-row items-center mb-8">
             <TouchableOpacity
@@ -311,8 +369,9 @@ const CreateEventScreen = () => {
             showsHorizontalScrollIndicator={false}
             className="mb-8"
           >
+            {/* Add Button */}
             <TouchableOpacity
-              onPress={handlePickMedia}
+              onPress={() => handlePickMedia()}
               className="w-32 h-40 bg-white/5 border-2 border-dashed border-white/20 rounded-2xl items-center justify-center mr-3"
             >
               <View className="bg-purple-500/20 p-3 rounded-full mb-2">
@@ -321,8 +380,14 @@ const CreateEventScreen = () => {
               <Text className="text-gray-400 text-xs font-bold">Add Media</Text>
             </TouchableOpacity>
 
+            {/* List Items */}
             {mediaItems.map((item, index) => (
-              <View key={index} className="relative mr-3">
+              <TouchableOpacity
+                key={index}
+                activeOpacity={0.8}
+                onPress={() => handlePickMedia(index)} // ✅ Tap to Replace
+                className="relative mr-3"
+              >
                 {item.type === "video" ? (
                   <Video
                     source={{ uri: item.uri }}
@@ -344,12 +409,18 @@ const CreateEventScreen = () => {
                   />
                 )}
 
+                {/* Remove Button */}
                 <TouchableOpacity
                   onPress={() => removeMedia(index)}
-                  className="absolute top-2 right-2 bg-black/60 p-1 rounded-full"
+                  className="absolute top-2 right-2 bg-red-500/80 p-1.5 rounded-full z-10"
                 >
-                  <X color="white" size={14} />
+                  <X color="white" size={12} />
                 </TouchableOpacity>
+
+                {/* Edit Indicator */}
+                <View className="absolute bottom-2 right-2 bg-black/60 p-1.5 rounded-full">
+                  <Pencil color="white" size={12} />
+                </View>
 
                 {index === 0 && (
                   <View className="absolute bottom-2 left-2 bg-purple-600 px-2 py-0.5 rounded">
@@ -359,11 +430,11 @@ const CreateEventScreen = () => {
                   </View>
                 )}
                 {item.type === "video" && (
-                  <View className="absolute top-1/2 left-1/2 -ml-3 -mt-3">
+                  <View className="absolute top-1/2 left-1/2 -ml-3 -mt-3 pointer-events-none">
                     <VideoIcon color="white" size={24} />
                   </View>
                 )}
-              </View>
+              </TouchableOpacity>
             ))}
           </ScrollView>
 
@@ -437,6 +508,60 @@ const CreateEventScreen = () => {
             multiline={true}
           />
 
+          {/* 3. TICKET TIERS */}
+          <View className="mb-6">
+            <Text className="text-white text-xl font-bold mb-3">
+              Ticket Tiers
+            </Text>
+            {tickets.map((ticket, index) => (
+              <View key={index} className="flex-row gap-2 mb-3 items-center">
+                {/* Name Input */}
+                <View className="flex-[2] flex-row items-center bg-white/5 border border-white/10 rounded-xl px-3 h-12">
+                  <Ticket color="#999" size={16} className="mr-2" />
+                  <TextInput
+                    placeholder="Tier Name (e.g. VIP)"
+                    placeholderTextColor="#666"
+                    value={ticket.name}
+                    onChangeText={(text) => updateTicket(index, "name", text)}
+                    className="flex-1 text-white text-base font-medium"
+                  />
+                </View>
+
+                {/* Price Input */}
+                <View className="flex-1 flex-row items-center bg-white/5 border border-white/10 rounded-xl px-3 h-12">
+                  <Text className="text-gray-400 mr-1">R</Text>
+                  <TextInput
+                    placeholder="Price"
+                    placeholderTextColor="#666"
+                    value={ticket.price}
+                    keyboardType="numeric"
+                    onChangeText={(text) => updateTicket(index, "price", text)}
+                    className="flex-1 text-white text-base font-medium"
+                  />
+                </View>
+
+                {/* Remove Button */}
+                {tickets.length > 1 && (
+                  <TouchableOpacity
+                    onPress={() => removeTicketTier(index)}
+                    className="bg-red-500/20 p-3 rounded-xl border border-red-500/50"
+                  >
+                    <Trash2 color="#FF4444" size={20} />
+                  </TouchableOpacity>
+                )}
+              </View>
+            ))}
+
+            {/* Add Tier Button */}
+            <TouchableOpacity
+              onPress={addTicketTier}
+              className="flex-row items-center justify-center bg-white/10 border border-white/10 border-dashed rounded-xl py-3 mt-1"
+            >
+              <Plus color="#D087FF" size={20} className="mr-2" />
+              <Text className="text-purple-300 font-bold">Add Ticket Tier</Text>
+            </TouchableOpacity>
+          </View>
+
           <View className="flex-row justify-between items-center bg-white/5 p-4 rounded-xl mb-8">
             <Text className="text-white font-bold text-lg">Public Event</Text>
             <Switch
@@ -475,19 +600,16 @@ const CreateEventScreen = () => {
         </View>
       </SafeAreaView>
 
-      {/* --- CATEGORY PICKER MODAL (Updated: Bottom Sheet Style) --- */}
+      {/* --- CATEGORY PICKER MODAL --- */}
       <Modal visible={showCategoryPicker} transparent animationType="slide">
         <View className="flex-1 justify-end bg-black/80">
           <View className="bg-[#1E1E1E] rounded-t-3xl h-[80%] overflow-hidden">
-            {/* Header */}
             <View className="flex-row items-center justify-between px-4 py-4 border-b border-white/10">
               <Text className="text-white text-xl font-bold">Categories</Text>
               <TouchableOpacity onPress={() => setShowCategoryPicker(false)}>
                 <Text className="text-purple-400 font-bold text-lg">Done</Text>
               </TouchableOpacity>
             </View>
-
-            {/* Search */}
             <View className="px-4 py-2">
               <View className="flex-row items-center bg-black/40 rounded-xl px-4 h-12">
                 <Search color="#999" size={20} className="mr-2" />
@@ -500,8 +622,6 @@ const CreateEventScreen = () => {
                 />
               </View>
             </View>
-
-            {/* List */}
             <FlatList
               data={AVAILABLE_TAGS.filter((t) =>
                 t.toLowerCase().includes(tagQuery.toLowerCase())
@@ -531,7 +651,7 @@ const CreateEventScreen = () => {
         </View>
       </Modal>
 
-      {/* --- DATE/TIME/LOCATION MODALS (Standard) --- */}
+      {/* --- DATE/TIME MODALS --- */}
       <Modal visible={!!activeDateModal} transparent animationType="slide">
         <View className="flex-1 justify-end bg-black/80">
           <View className="bg-[#1E1E1E] rounded-t-3xl p-4 h-[70%]">
@@ -546,7 +666,9 @@ const CreateEventScreen = () => {
                 <X color="white" size={24} />
               </TouchableOpacity>
             </View>
+            {/* ✅ MINIMUM DATE: Prevents past dates */}
             <RNCalendar
+              minDate={todayDateString}
               onDayPress={(day: any) => {
                 if (activeDateModal === "start") setStartDate(day.dateString);
                 else setEndDate(day.dateString);
@@ -561,6 +683,7 @@ const CreateEventScreen = () => {
                 selectedDayTextColor: "#ffffff",
                 monthTextColor: "white",
                 arrowColor: "#D087FF",
+                textDisabledColor: "#444", // Color for past dates
               }}
             />
           </View>
@@ -582,9 +705,9 @@ const CreateEventScreen = () => {
               </TouchableOpacity>
             </View>
             <FlatList
-              data={TIMES}
+              data={availableTimes} // ✅ Uses the filtered list
               keyExtractor={(item) => item}
-              initialScrollIndex={24}
+              initialScrollIndex={0}
               getItemLayout={(data, index) => ({
                 length: 60,
                 offset: 60 * index,
@@ -607,6 +730,7 @@ const CreateEventScreen = () => {
         </View>
       </Modal>
 
+      {/* --- LOCATION PICKER --- */}
       <Modal visible={showLocationPicker} transparent animationType="slide">
         <View className="flex-1 bg-[#1E1E1E]">
           <SafeAreaView className="flex-1">

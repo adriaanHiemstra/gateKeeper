@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -16,8 +16,8 @@ import Animated, {
   withDelay,
   withTiming,
 } from "react-native-reanimated";
+import { Video, ResizeMode } from "expo-av"; // ✅ 1. Import Video
 
-// Styles
 import { fireGradient } from "../styles/colours";
 
 const { width } = Dimensions.get("screen");
@@ -28,13 +28,12 @@ type EventFeedCardProps = {
   title: string;
   hostName: string;
   hostAvatar: ImageSourcePropType;
-  image: ImageSourcePropType;
+  image: any; // ✅ Changed to 'any' to handle URIs easier
   attendeesCount: number;
   onOpenSocial: () => void;
   onPressHost: () => void;
   onViewEvent: () => void;
   showSocial?: boolean;
-  disableTap?: boolean; // Unused now, but kept for compatibility
 };
 
 const EventFeedCard = ({
@@ -50,10 +49,25 @@ const EventFeedCard = ({
   showSocial = true,
 }: EventFeedCardProps) => {
   const [isLiked, setIsLiked] = useState(false);
+  const [isVideo, setIsVideo] = useState(false); // ✅ Check if media is video
 
-  // Animation Values (Heart Pop only)
+  // Animation Values
   const scale = useSharedValue(0);
   const opacity = useSharedValue(0);
+
+  // ✅ Check if the image source is actually a video URL
+  useEffect(() => {
+    if (image?.uri) {
+      const uri = image.uri.toLowerCase();
+      if (
+        uri.endsWith(".mp4") ||
+        uri.endsWith(".mov") ||
+        uri.endsWith(".quicktime")
+      ) {
+        setIsVideo(true);
+      }
+    }
+  }, [image]);
 
   const handleLike = () => {
     const newState = !isLiked;
@@ -76,15 +90,27 @@ const EventFeedCard = ({
       className="mb-2 bg-black relative"
       style={{ height: CARD_HEIGHT, width: width }}
     >
-      {/* 1. Main Image Area */}
-      <View className="flex-1 relative justify-center items-center">
-        <Image
-          source={image}
-          className="w-full h-full absolute"
-          resizeMode="cover"
-        />
+      {/* 1. Main Media Area */}
+      <View className="flex-1 relative justify-center items-center bg-gray-900">
+        {/* ✅ Conditional Rendering: Video vs Image */}
+        {isVideo ? (
+          <Video
+            source={image}
+            style={{ width: "100%", height: "100%", position: "absolute" }}
+            resizeMode={ResizeMode.COVER}
+            shouldPlay={true}
+            isLooping={true}
+            isMuted={true} // Auto-play videos usually need to be muted first
+          />
+        ) : (
+          <Image
+            source={image}
+            className="w-full h-full absolute"
+            resizeMode="cover"
+          />
+        )}
 
-        {/* Pop-up Heart Animation (Visual Only) */}
+        {/* Pop-up Heart Animation */}
         <View className="absolute inset-0 justify-center items-center z-10 pointer-events-none">
           <Animated.View style={heartStyle}>
             <Heart color="#FA8900" size={100} fill="#FA8900" />
@@ -116,18 +142,17 @@ const EventFeedCard = ({
             <TouchableOpacity
               onPress={onPressHost}
               className="flex-row items-center"
-              activeOpacity={0.8}
             >
               <Image
                 source={hostAvatar}
                 className="w-10 h-10 rounded-full border-2 border-orange-500 mr-3"
               />
               <View>
-                <Text className="text-gray-300 text-xs font-bold uppercase tracking-wider shadow-black">
+                <Text className="text-gray-300 text-xs font-bold uppercase tracking-wider">
                   Hosted By
                 </Text>
                 <Text
-                  className="text-white text-lg font-bold shadow-black"
+                  className="text-white text-lg font-bold"
                   style={{ fontFamily: "Jost-Medium" }}
                 >
                   {hostName}
@@ -135,11 +160,9 @@ const EventFeedCard = ({
               </View>
             </TouchableOpacity>
 
-            {/* Like Button */}
             <TouchableOpacity
               onPress={handleLike}
               className="bg-white/20 p-3 rounded-full backdrop-blur-md"
-              activeOpacity={0.6}
             >
               <Heart
                 color={isLiked ? "#FA8900" : "white"}
@@ -149,7 +172,7 @@ const EventFeedCard = ({
             </TouchableOpacity>
           </View>
 
-          {/* VIEW EVENT BUTTON (Always Visible) */}
+          {/* VIEW EVENT BUTTON */}
           <TouchableOpacity
             onPress={onViewEvent}
             activeOpacity={0.9}
@@ -171,7 +194,7 @@ const EventFeedCard = ({
         </LinearGradient>
       </View>
 
-      {/* Social Button (Top Right) */}
+      {/* Social Button */}
       {showSocial && (
         <TouchableOpacity
           onPress={onOpenSocial}
