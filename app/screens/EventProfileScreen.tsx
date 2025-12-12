@@ -15,7 +15,12 @@ import {
   FlatList,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
-import { RouteProp, useRoute, useNavigation } from "@react-navigation/native";
+import {
+  RouteProp,
+  useRoute,
+  useNavigation,
+  useFocusEffect,
+} from "@react-navigation/native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import {
   ArrowLeft,
@@ -29,12 +34,14 @@ import {
   X,
   Volume2,
   VolumeX,
+  Bell,
 } from "lucide-react-native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { Video, ResizeMode, Audio } from "expo-av";
 
-// Components
+// Components & Backend
 import TopBanner from "../components/TopBanner";
+import { supabase } from "../lib/supabase";
 
 // Styles
 import { fireGradient, bannerGradient } from "../styles/colours";
@@ -68,42 +75,92 @@ const EventProfileScreen = () => {
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { params } = useRoute<EventProfileRouteProp>();
 
-  // 1. EXTRACT DATA
-  const eventId = params?.eventId; // ✅ This gets the real UUID
-  const eventName = params?.eventName ?? "Event Name";
-  const logo = params?.logo ?? require("../assets/profile-pic-1.png");
-  const description =
-    params?.description ?? "Join us for an unforgettable experience!";
-  const time = params?.time ?? "Date TBA";
-  const location = params?.location ?? "Location TBA";
-  const ticketUrl = params?.ticketUrl;
+  // Initial Params (Fallback)
+  const eventId = params?.eventId;
 
-  // Handle Images: Prefer array, fallback to banner
-  const rawImages = params?.images;
-  const banner = params?.banner ?? require("../assets/event-placeholder.png");
+  // LIVE STATE
+  const [eventData, setEventData] = useState<any>(null);
+  const [updates, setUpdates] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  // Ensure we always have a valid array of sources
-  const galleryImages =
-    rawImages && rawImages.length > 0 ? rawImages : [banner];
-
-  // Try to find lowest price from ticket tiers (if passed), else default
-  const ticketTiers = params?.ticket_tiers || [];
-  const lowestPrice =
-    ticketTiers.length > 0
-      ? Math.min(...ticketTiers.map((t: any) => parseInt(t.price) || 0))
-      : 150;
-
-  // Use dynamic tags from params, fallback to default if empty
-  const tags =
-    params?.tags && params.tags.length > 0 ? params.tags : ["Music", "Event"];
-
-  // 2. STATE
+  // Gallery State
   const [activeSlide, setActiveSlide] = useState(0);
   const [showFullGallery, setShowFullGallery] = useState(false);
   const [fullScreenIndex, setFullScreenIndex] = useState(0);
   const [isMuted, setIsMuted] = useState(false);
 
-  // ENABLE AUDIO IN SILENT MODE
+  // FETCH FRESH DATA ON FOCUS
+  useFocusEffect(
+    useCallback(() => {
+      if (!eventId) return;
+
+      const fetchData = async () => {
+        try {
+          const { data: event, error: eventError } = await supabase
+            .from("events")
+            .select(`*, ticket_tiers (*)`)
+            .eq("id", eventId)
+            .single();
+
+          if (!eventError) {
+            setEventData(event);
+          }
+
+          const { data: posts, error: postError } = await supabase
+            .from("event_updates")
+            .select("*")
+            .eq("event_id", eventId)
+            .order("created_at", { ascending: false });
+
+          if (!postError) {
+            setUpdates(posts || []);
+          }
+        } catch (err) {
+          console.log("Error fetching event details:", err);
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      fetchData();
+    }, [eventId])
+  );
+
+  // --- DERIVED DATA ---
+  const displayEvent = eventData || params;
+  const eventName =
+    displayEvent?.title || displayEvent?.eventName || "Loading...";
+  const description =
+    displayEvent?.description || "Join us for an unforgettable experience!";
+  const locationText =
+    displayEvent?.location_text || displayEvent?.location || "Location TBA";
+
+  const dateObj = displayEvent?.date ? new Date(displayEvent.date) : null;
+  const timeText = dateObj
+    ? `${dateObj.toLocaleDateString()} • ${dateObj.toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+      })}`
+    : displayEvent?.time || "Date TBA";
+
+  const rawImages = displayEvent?.images;
+  const banner =
+    displayEvent?.banner_url ||
+    displayEvent?.banner ||
+    require("../assets/event-placeholder.png");
+  const galleryImages =
+    rawImages && rawImages.length > 0 ? rawImages : [banner];
+  const logo = require("../assets/profile-pic-1.png");
+
+  const tiers = displayEvent?.ticket_tiers || params?.ticket_tiers || [];
+  const lowestPrice =
+    tiers.length > 0
+      ? Math.min(...tiers.map((t: any) => parseFloat(t.price) || 0))
+      : 150;
+
+  const ticketUrl = displayEvent?.ticket_url;
+  const tags = displayEvent?.tags || params?.tags || ["Music", "Event"];
+
   useEffect(() => {
     Audio.setAudioModeAsync({
       playsInSilentModeIOS: true,
@@ -112,7 +169,6 @@ const EventProfileScreen = () => {
     });
   }, []);
 
-  // --- HEADER SCROLL HANDLER ---
   const handleScroll = (event: any) => {
     const slide = Math.ceil(
       event.nativeEvent.contentOffset.x /
@@ -121,44 +177,15 @@ const EventProfileScreen = () => {
     if (slide !== activeSlide) setActiveSlide(slide);
   };
 
-  // --- FULL SCREEN VIEWABILITY ---
+  // ✅ FIXED: Missing Variable Definitions
+  const viewabilityConfig = { itemVisiblePercentThreshold: 50 };
+
   const onViewableItemsChanged = useCallback(({ viewableItems }: any) => {
     if (viewableItems.length > 0) {
       setFullScreenIndex(viewableItems[0].index ?? 0);
     }
   }, []);
 
-  const viewabilityConfig = { itemVisiblePercentThreshold: 50 };
-
-  const handleTicketPress = async () => {
-    if (ticketUrl) {
-      // External Link Logic
-      const supported = await Linking.canOpenURL(ticketUrl);
-      if (supported) await Linking.openURL(ticketUrl);
-      else Alert.alert("Error", "Cannot open ticket link.");
-    } else {
-      // ✅ SAFETY CHECK: Ensure we have an ID before navigating
-      if (!eventId) {
-        Alert.alert("Error", "Event ID is missing. Cannot proceed.");
-        return;
-      }
-
-      // ✅ INTERNAL APP LOGIC: Pass the REAL ID (not "1")
-      navigation.navigate("PurchaseTicket", {
-        eventId: eventId, // Fix applied here
-        eventName: eventName,
-        ticket_tiers: ticketTiers,
-        banner: banner,
-        logo: logo,
-        time: time,
-        location: location,
-      });
-    }
-  };
-
-  // --- RENDERERS ---
-
-  // 1. Mini Gallery Item (Header)
   const renderHeaderItem = (item: any, index: number) => {
     const source = getSource(item);
     const isVideo = isVideoFile(item);
@@ -184,11 +211,10 @@ const EventProfileScreen = () => {
               source={source}
               style={{ width: "100%", height: "100%" }}
               resizeMode={ResizeMode.COVER}
-              shouldPlay={true}
+              shouldPlay
               isLooping
-              isMuted={true} // Always muted in header
+              isMuted
             />
-            {/* Play Icon Overlay */}
             <View className="absolute inset-0 items-center justify-center">
               <View className="bg-black/30 p-3 rounded-full backdrop-blur-sm">
                 <VolumeX color="white" size={20} />
@@ -206,18 +232,10 @@ const EventProfileScreen = () => {
     );
   };
 
-  // 2. Full Screen Item (Modal)
-  const renderFullScreenItem = ({
-    item,
-    index,
-  }: {
-    item: any;
-    index: number;
-  }) => {
+  const renderFullScreenItem = ({ item, index }: any) => {
     const source = getSource(item);
     const isVideo = isVideoFile(item);
     const isActive = index === fullScreenIndex;
-
     return (
       <View
         style={{
@@ -249,6 +267,19 @@ const EventProfileScreen = () => {
     );
   };
 
+  const handleTicketPress = () => {
+    if (!eventId) return;
+    navigation.navigate("PurchaseTicket", {
+      eventId,
+      eventName,
+      ticket_tiers: tiers,
+      banner,
+      logo,
+      time: timeText,
+      location: locationText,
+    });
+  };
+
   return (
     <View className="flex-1 bg-[#121212]">
       <StatusBar barStyle="light-content" />
@@ -261,7 +292,7 @@ const EventProfileScreen = () => {
           contentContainerStyle={{ paddingTop: 100, paddingBottom: 140 }}
           showsVerticalScrollIndicator={false}
         >
-          {/* 3. IMAGE CAROUSEL HEADER */}
+          {/* HEADER GALLERY */}
           <View className="relative h-80 w-full mb-6">
             <ScrollView
               horizontal
@@ -270,11 +301,10 @@ const EventProfileScreen = () => {
               onScroll={handleScroll}
               scrollEventThrottle={16}
             >
-              {galleryImages.map((img: any, index: number) =>
-                renderHeaderItem(img, index)
+              {galleryImages.map((img: any, i: number) =>
+                renderHeaderItem(img, i)
               )}
             </ScrollView>
-
             <LinearGradient
               colors={["transparent", "#121212"]}
               style={{
@@ -286,24 +316,6 @@ const EventProfileScreen = () => {
               }}
               pointerEvents="none"
             />
-
-            <View className="absolute top-4 left-4 flex-row justify-between w-[92%]">
-              <TouchableOpacity
-                onPress={() => navigation.goBack()}
-                className="bg-black/50 p-3 rounded-full border border-white/10"
-              >
-                <ArrowLeft color="white" size={24} />
-              </TouchableOpacity>
-              <View className="flex-row gap-3">
-                <TouchableOpacity className="bg-black/50 p-3 rounded-full border border-white/10">
-                  <Heart color="white" size={24} />
-                </TouchableOpacity>
-                <TouchableOpacity className="bg-black/50 p-3 rounded-full border border-white/10">
-                  <Share2 color="white" size={24} />
-                </TouchableOpacity>
-              </View>
-            </View>
-
             {galleryImages.length > 1 && (
               <View className="absolute bottom-4 left-0 right-0 flex-row justify-center gap-2">
                 {galleryImages.map((_: any, i: number) => (
@@ -316,9 +328,15 @@ const EventProfileScreen = () => {
                 ))}
               </View>
             )}
+            <TouchableOpacity
+              onPress={() => navigation.goBack()}
+              className="absolute top-4 left-4 bg-black/50 p-3 rounded-full border border-white/10"
+            >
+              <ArrowLeft color="white" size={24} />
+            </TouchableOpacity>
           </View>
 
-          {/* 4. TITLE & HOST */}
+          {/* TITLE & HOST */}
           <View className="px-6 mb-6 -mt-12">
             <TouchableOpacity
               onPress={() => navigation.navigate("EventHostProfile")}
@@ -329,17 +347,14 @@ const EventProfileScreen = () => {
                 Rockstar Events
               </Text>
             </TouchableOpacity>
-
             <Text
               className="text-white text-4xl font-bold mb-2 leading-tight"
               style={{ fontFamily: "Jost-Medium" }}
             >
               {eventName}
             </Text>
-
-            {/* Tags */}
             <View className="flex-row flex-wrap gap-2 mt-2">
-              {tags.map((tag, i) => (
+              {tags.map((tag: string, i: number) => (
                 <View
                   key={i}
                   className="bg-white/10 px-3 py-1 rounded-lg border border-white/5"
@@ -350,7 +365,51 @@ const EventProfileScreen = () => {
             </View>
           </View>
 
-          {/* 5. INFO CARD */}
+          {/* NEWS & UPDATES */}
+          {updates.length > 0 && (
+            <View className="px-6 mb-8">
+              <View className="flex-row items-center mb-4">
+                <Bell color="#FA8900" size={20} className="mr-2" />
+                <Text className="text-white text-xl font-bold">
+                  Latest Updates
+                </Text>
+              </View>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                {updates.map((update, index) => (
+                  <View
+                    key={index}
+                    className="w-72 bg-white/5 border border-white/10 rounded-2xl p-3 mr-4"
+                  >
+                    <View className="flex-row items-center mb-2">
+                      <Image
+                        source={logo}
+                        className="w-6 h-6 rounded-full mr-2"
+                      />
+                      <Text className="text-gray-400 text-xs font-bold">
+                        Host Update •{" "}
+                        {new Date(update.created_at).toLocaleDateString()}
+                      </Text>
+                    </View>
+                    {update.image_url && (
+                      <Image
+                        source={{ uri: update.image_url }}
+                        className="w-full h-32 rounded-xl mb-3"
+                        resizeMode="cover"
+                      />
+                    )}
+                    <Text
+                      className="text-white font-medium leading-5 mb-2"
+                      numberOfLines={3}
+                    >
+                      {update.caption}
+                    </Text>
+                  </View>
+                ))}
+              </ScrollView>
+            </View>
+          )}
+
+          {/* DETAILS */}
           <View className="mx-6 bg-white/5 border border-white/10 rounded-3xl p-5 mb-8 gap-5">
             <View className="flex-row items-center">
               <View className="bg-orange-500/20 p-3 rounded-xl mr-4">
@@ -360,10 +419,9 @@ const EventProfileScreen = () => {
                 <Text className="text-white font-bold text-lg">
                   Date & Time
                 </Text>
-                <Text className="text-gray-400">{time}</Text>
+                <Text className="text-gray-400">{timeText}</Text>
               </View>
             </View>
-
             <View className="flex-row items-center">
               <View className="bg-blue-500/20 p-3 rounded-xl mr-4">
                 <MapPin color="#60A5FA" size={24} />
@@ -374,34 +432,30 @@ const EventProfileScreen = () => {
                   onPress={() =>
                     navigation.navigate("VenueProfile", {
                       venueId: "123",
-                      venueName: location,
+                      venueName: locationText,
                     })
                   }
                 >
-                  <Text className="text-orange-400 underline decoration-orange-400 font-medium">
-                    {location}
+                  <Text className="text-orange-400 underline font-medium">
+                    {locationText}
                   </Text>
                 </TouchableOpacity>
               </View>
             </View>
-
             <View className="flex-row items-center">
               <View className="bg-purple-500/20 p-3 rounded-xl mr-4">
                 <Ticket color="#D087FF" size={24} />
               </View>
               <View>
                 <Text className="text-white font-bold text-lg">Tickets</Text>
-                <Text className="text-gray-400">
-                  Tickets available from: R {lowestPrice}
-                </Text>
+                <Text className="text-gray-400">From: R {lowestPrice}</Text>
               </View>
             </View>
-
             <View className="border-t border-white/10 pt-4 mt-1">
               <TouchableOpacity
                 onPress={() =>
                   navigation.navigate("EventDiscussion", {
-                    eventId: "1",
+                    eventId: eventId!,
                     eventName: eventName,
                   })
                 }
@@ -425,15 +479,12 @@ const EventProfileScreen = () => {
             </View>
           </View>
 
-          {/* 6. DESCRIPTION */}
           <View className="px-6 mb-6">
             <Text className="text-white text-xl font-bold mb-2">About</Text>
             <Text className="text-gray-400 text-base leading-6">
               {description}
             </Text>
           </View>
-
-          {/* 7. MAP PREVIEW */}
           <View className="px-6 mb-8">
             <Text className="text-white text-xl font-bold mb-3">Location</Text>
             <View className="h-40 w-full bg-white/10 rounded-3xl border border-white/10 overflow-hidden items-center justify-center">
@@ -443,7 +494,6 @@ const EventProfileScreen = () => {
           </View>
         </ScrollView>
 
-        {/* 8. STICKY FOOTER */}
         <View className="absolute bottom-0 left-0 right-0 bg-[#121212]/95 border-t border-white/10 p-6 pb-8 flex-row items-center justify-between">
           <View>
             <Text className="text-gray-400 text-xs font-bold uppercase">
@@ -453,7 +503,6 @@ const EventProfileScreen = () => {
               R {lowestPrice}
             </Text>
           </View>
-
           <TouchableOpacity
             activeOpacity={0.9}
             className="w-[60%] shadow-lg shadow-orange-500/40"
@@ -474,7 +523,6 @@ const EventProfileScreen = () => {
         </View>
       </SafeAreaView>
 
-      {/* 9. FULL SCREEN GALLERY MODAL */}
       <Modal
         visible={showFullGallery}
         transparent={false}
@@ -483,14 +531,12 @@ const EventProfileScreen = () => {
       >
         <View className="flex-1 bg-black relative">
           <StatusBar hidden />
-
           <TouchableOpacity
             onPress={() => setShowFullGallery(false)}
             className="absolute top-12 right-6 z-50 bg-black/50 p-2 rounded-full"
           >
             <X color="white" size={32} />
           </TouchableOpacity>
-
           <TouchableOpacity
             onPress={() => setIsMuted(!isMuted)}
             className="absolute top-12 left-6 z-50 bg-black/50 p-2 rounded-full"
@@ -501,7 +547,6 @@ const EventProfileScreen = () => {
               <Volume2 color="white" size={24} />
             )}
           </TouchableOpacity>
-
           <FlatList
             data={galleryImages}
             keyExtractor={(_, index) => index.toString()}
@@ -514,7 +559,6 @@ const EventProfileScreen = () => {
             initialScrollIndex={fullScreenIndex}
             onScrollToIndexFailed={() => {}}
           />
-
           <View className="absolute bottom-10 w-full items-center">
             <Text className="text-white/60 font-bold">Swipe for more</Text>
           </View>

@@ -1,3 +1,4 @@
+// app/screens/HomeScreen.tsx
 import React, { useState, useCallback } from "react";
 import {
   View,
@@ -40,11 +41,7 @@ import { bannerGradient } from "../styles/colours";
 const { width } = Dimensions.get("window");
 const HEADER_HEIGHT = 100;
 const PANEL_WIDTH = width * 0.85;
-
-// Layout Constants
-const CARD_HEIGHT = width * 1.6;
-const CARD_MARGIN = 8;
-const SNAP_INTERVAL = CARD_HEIGHT + CARD_MARGIN;
+const SNAP_INTERVAL = width * 1.6 + 8; // Card Height + Margin
 
 const HomeScreen = () => {
   const navigation =
@@ -53,12 +50,11 @@ const HomeScreen = () => {
   const [events, setEvents] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Social Panel State
   const [isPanelOpen, setIsPanelOpen] = useState(false);
   const [selectedFriends, setSelectedFriends] = useState<any[]>([]);
   const [selectedEventTitle, setSelectedEventTitle] = useState("");
 
-  // --- FETCH DATA ---
+  // ✅ FETCH LATEST DATA EVERY TIME SCREEN IS FOCUSED
   useFocusEffect(
     useCallback(() => {
       fetchEvents();
@@ -75,8 +71,8 @@ const HomeScreen = () => {
           profiles:host_id (
             username,
             avatar_url
-          )
-            tier_data:ticket_tiers (*)
+          ),
+          ticket_tiers (*) 
         `
         )
         .order("date", { ascending: true });
@@ -90,7 +86,6 @@ const HomeScreen = () => {
     }
   };
 
-  // --- Animation Logic ---
   const translateY = useSharedValue(0);
   const lastContentOffset = useSharedValue(0);
   const isHidden = useSharedValue(false);
@@ -124,7 +119,6 @@ const HomeScreen = () => {
   const panelTranslateX = useSharedValue(width);
 
   const openPanel = (friends: any[], title: string) => {
-    // Mock friends for now
     setSelectedFriends([
       { id: "1", name: "Sarah J", img: require("../assets/profile-pic-2.png") },
       { id: "2", name: "Mike T", img: require("../assets/profile-pic-1.png") },
@@ -146,10 +140,9 @@ const HomeScreen = () => {
     transform: [{ translateX: panelTranslateX.value }],
   }));
 
-  // Helper for navigation
   const goToEventProfile = (item: any) => {
     navigation.navigate("EventProfile", {
-      eventId: item.id,
+      eventId: item.id, // Pass ID so profile can fetch fresh data
       eventName: item.title,
       attendees: 120,
       logo: item.profiles?.avatar_url
@@ -164,7 +157,7 @@ const HomeScreen = () => {
       description: item.description,
       ticketUrl: item.ticket_url,
       tags: item.tags || [],
-      ticket_tiers: item.tier_data || [],
+      ticket_tiers: item.ticket_tiers || [],
     });
   };
 
@@ -187,36 +180,43 @@ const HomeScreen = () => {
             onScroll={scrollHandler}
             scrollEventThrottle={16}
             showsVerticalScrollIndicator={false}
-            // Snap Logic
             snapToInterval={SNAP_INTERVAL}
             snapToAlignment="start"
             decelerationRate="fast"
             disableIntervalMomentum={true}
-            renderItem={({ item }) => (
-              <EventFeedCard
-                id={item.id}
-                title={item.title}
-                hostName={item.profiles?.username || "Unknown Host"}
-                // ✅ FIX 1: Use 'item' instead of 'event'
-                // ✅ FIX 2: Add '|| []' fallback so it never crashes if empty
-                mediaItems={item.images || []}
-                hostAvatar={
-                  item.profiles?.avatar_url
-                    ? { uri: item.profiles.avatar_url }
-                    : require("../assets/profile-pic-1.png")
-                }
-                image={
-                  item.banner_url
-                    ? { uri: item.banner_url }
-                    : require("../assets/event-placeholder.png")
-                }
-                attendeesCount={12}
-                // Actions
-                onOpenSocial={() => openPanel([], item.title)}
-                onPressHost={() => navigation.navigate("EventHostProfile")}
-                onViewEvent={() => goToEventProfile(item)}
-              />
-            )}
+            renderItem={({ item }) => {
+              // Calculate Lowest Price
+              const tiers = item.ticket_tiers || [];
+              const minPrice =
+                tiers.length > 0
+                  ? Math.min(...tiers.map((t: any) => parseFloat(t.price) || 0))
+                  : null;
+
+              return (
+                <EventFeedCard
+                  id={item.id}
+                  title={item.title}
+                  hostName={item.profiles?.username || "Unknown Host"}
+                  mediaItems={item.images || []}
+                  minPrice={minPrice ? minPrice.toString() : undefined} // ✅ Pass calculated price
+                  tags={item.tags || []} // ✅ Pass tags
+                  hostAvatar={
+                    item.profiles?.avatar_url
+                      ? { uri: item.profiles.avatar_url }
+                      : require("../assets/profile-pic-1.png")
+                  }
+                  image={
+                    item.banner_url
+                      ? { uri: item.banner_url }
+                      : require("../assets/event-placeholder.png")
+                  }
+                  attendeesCount={12}
+                  onOpenSocial={() => openPanel([], item.title)}
+                  onPressHost={() => navigation.navigate("EventHostProfile")}
+                  onViewEvent={() => goToEventProfile(item)}
+                />
+              );
+            }}
             ListEmptyComponent={
               <View className="flex-1 justify-center items-center pt-32 px-10">
                 <Text className="text-white text-xl font-bold mb-2">
@@ -231,7 +231,7 @@ const HomeScreen = () => {
         )}
       </SafeAreaView>
 
-      {/* SIDE PANEL (Social) */}
+      {/* SIDE PANEL (Social) - Kept same as before */}
       {isPanelOpen && (
         <View style={StyleSheet.absoluteFill} className="z-50">
           <Pressable
@@ -275,7 +275,6 @@ const HomeScreen = () => {
                   <X color="white" size={24} />
                 </TouchableOpacity>
               </View>
-
               <FlatList
                 data={selectedFriends}
                 keyExtractor={(item) => item.id}

@@ -46,6 +46,7 @@ type EventFeedCardProps = {
   onViewEvent: () => void;
   showSocial?: boolean;
   tags?: string[];
+  minPrice?: string;
 };
 
 // --- HELPER: Normalize Source ---
