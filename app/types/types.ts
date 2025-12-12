@@ -1,3 +1,5 @@
+// app/types/types.ts
+
 export type RootStackParamList = {
   Home: undefined;
   Map: undefined;
@@ -8,7 +10,6 @@ export type RootStackParamList = {
   Login: undefined;
   SignUp: undefined;
   ForgotPassword: undefined;
-
   ResetPassword: undefined;
 
   // Settings screens
@@ -33,6 +34,7 @@ export type RootStackParamList = {
 
   // Event screens
   EventProfile: {
+    eventId: string;
     eventName: string;
     attendees: number;
     logo: any;
@@ -42,16 +44,30 @@ export type RootStackParamList = {
     location?: string;
     ticketUrl?: string;
     images?: any[];
+    tags?: string[]; // ✅ Added this (you already had it)
+    ticket_tiers?: any[]; // ✅ ADDED THIS (Required for price calculation)
   };
   TicketDisplay: {
+    eventId: string;
     eventTitle: string;
     ticketId?: string;
     eventImage?: any;
     eventLocation?: string;
     eventTime?: string;
+    // ✅ ADD THESE TWO LINES:
+    ticketTierName?: string;
+    ticketPrice?: string;
   };
   EventHostProfile: undefined;
-  PurchaseTicket: { eventId: string };
+  PurchaseTicket: {
+    eventId: string;
+    eventName: string;
+    ticket_tiers: any[]; // The list of real prices
+    banner?: any;
+    logo?: any;
+    time?: string;
+    location?: string;
+  };
   VenueProfile: { venueId: string; venueName: string };
   VenueReviews: { venueId: string; venueName: string };
   EventDiscussion: { eventId: string; eventName: string };

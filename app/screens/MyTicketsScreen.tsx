@@ -1,4 +1,5 @@
-import React, { useState } from "react";
+// app/screens/MyTicketsScreen.tsx
+import React, { useState, useCallback } from "react";
 import {
   View,
   Text,
@@ -7,10 +8,11 @@ import {
   Image,
   TouchableOpacity,
   StyleSheet,
+  ActivityIndicator,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
-import { useNavigation } from "@react-navigation/native";
+import { useNavigation, useFocusEffect } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import {
   ArrowLeft,
@@ -20,123 +22,148 @@ import {
   MapPin,
 } from "lucide-react-native";
 
-// Components
 import TopBanner from "../components/TopBanner";
 import BottomNav from "../components/BottomNav";
-
-// Styles
 import { bannerGradient } from "../styles/colours";
 import { RootStackParamList } from "../types/types";
+import { supabase } from "../lib/supabase";
 
 const MyTicketsScreen = () => {
   const navigation =
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [searchQuery, setSearchQuery] = useState("");
+  const [tickets, setTickets] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  // Mock Data
-  const initialTickets = [
-    {
-      id: "1",
-      title: "Just Between Us",
-      date: "28 Oct 2025",
-      time: "20:00",
-      location: "Clifton 4th",
-      image: require("../assets/event-placeholder.png"),
-    },
-    {
-      id: "2",
-      title: "Secrets of Summer",
-      date: "15 Nov 2025",
-      time: "14:00",
-      location: "Val de Vie",
-      image: require("../assets/image-placeholder-2.png"),
-    },
-    {
-      id: "3",
-      title: "Techno Tunnel",
-      date: "01 Dec 2025",
-      time: "22:00",
-      location: "The Power Station",
-      image: require("../assets/profile-pic-1.png"),
-    },
-  ];
+  useFocusEffect(
+    useCallback(() => {
+      fetchTickets();
+    }, [])
+  );
 
-  const [tickets, setTickets] = useState(initialTickets);
+  const fetchTickets = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("tickets")
+        .select(
+          `
+          id,
+          event_id, 
+          qr_code,
+          status,
+          purchased_at,
+          events (
+            title,
+            date,
+            location_text, 
+            banner_url
+          ),
+          ticket_tiers (
+            name,
+            price
+          )
+        `
+        ) // ✅ Added event_id to selection
+        .order("purchased_at", { ascending: false });
 
-  const handleSearch = (text: string) => {
-    setSearchQuery(text);
-    if (text) {
-      const filtered = initialTickets.filter((item) =>
-        item.title.toLowerCase().includes(text.toLowerCase())
-      );
-      setTickets(filtered);
-    } else {
-      setTickets(initialTickets);
+      if (error) throw error;
+      setTickets(data || []);
+    } catch (err) {
+      console.log("Error fetching tickets:", err);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const renderTicket = ({ item }: { item: any }) => (
-    <TouchableOpacity
-      activeOpacity={0.9}
-      onPress={() =>
-        navigation.navigate("TicketDisplay", {
-          eventTitle: item.title,
-          ticketId: `#GK-${item.id}8842`,
-          eventImage: item.image,
-          eventLocation: item.location,
-          eventTime: `${item.date} • ${item.time}`,
+  const renderTicket = ({ item }: { item: any }) => {
+    const event = item.events || {};
+    const tier = item.ticket_tiers || {};
+
+    const eventTitle = event.title || "Unknown Event";
+    const eventDate = event.date
+      ? new Date(event.date).toLocaleDateString()
+      : "Date TBA";
+    const eventTime = event.date
+      ? new Date(event.date).toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
         })
-      }
-      className="mb-4 bg-white/5 border border-white/10 rounded-3xl overflow-hidden"
-    >
-      <View className="flex-row p-4">
-        {/* Event Image */}
-        <Image
-          source={item.image}
-          className="w-24 h-24 rounded-2xl mr-4"
-          resizeMode="cover"
-        />
+      : "";
+    const eventLoc = event.location_text || "TBA";
+    const tierName = tier.name || "General Access";
+    const imageSource = event.banner_url
+      ? { uri: event.banner_url }
+      : require("../assets/event-placeholder.png");
 
-        {/* Info Column */}
-        <View className="flex-1 justify-center">
-          <Text
-            className="text-white text-xl font-bold mb-1"
-            style={{ fontFamily: "Jost-Medium" }}
-            numberOfLines={1}
-          >
-            {item.title}
-          </Text>
+    return (
+      <TouchableOpacity
+        activeOpacity={0.9}
+        onPress={() =>
+          navigation.navigate("TicketDisplay", {
+            eventId: item.event_id, // ✅ FIX: Added this so the button works
+            eventTitle: eventTitle,
+            ticketId: `#${item.qr_code}`,
+            eventImage: imageSource,
+            eventLocation: eventLoc,
+            eventTime: `${eventDate} • ${eventTime}`,
+            ticketTierName: tierName,
+            ticketPrice: tier.price,
+          })
+        }
+        className="mb-4 bg-white/5 border border-white/10 rounded-3xl overflow-hidden"
+      >
+        <View className="flex-row p-4">
+          <Image
+            source={imageSource}
+            className="w-24 h-24 rounded-2xl mr-4"
+            resizeMode="cover"
+          />
 
-          <View className="flex-row items-center mb-1">
-            <Calendar color="#FA8900" size={14} className="mr-1" />
-            <Text className="text-gray-300 text-xs">
-              {item.date} • {item.time}
+          <View className="flex-1 justify-center">
+            <Text
+              className="text-white text-xl font-bold mb-1"
+              style={{ fontFamily: "Jost-Medium" }}
+              numberOfLines={1}
+            >
+              {eventTitle}
             </Text>
+
+            <View className="flex-row items-center mb-1">
+              <Calendar color="#FA8900" size={14} className="mr-1" />
+              <Text className="text-gray-300 text-xs">
+                {eventDate} • {eventTime}
+              </Text>
+            </View>
+
+            <View className="flex-row items-center">
+              <MapPin color="#666" size={14} className="mr-1" />
+              <Text className="text-gray-400 text-xs" numberOfLines={1}>
+                {eventLoc}
+              </Text>
+            </View>
           </View>
 
-          <View className="flex-row items-center">
-            <MapPin color="#666" size={14} className="mr-1" />
-            <Text className="text-gray-400 text-xs">{item.location}</Text>
+          <View className="justify-center pl-2 border-l border-white/10 ml-2">
+            <View className="bg-white/10 p-2 rounded-xl">
+              <QrCode color="white" size={24} />
+            </View>
           </View>
         </View>
 
-        {/* QR Code Action Area */}
-        <View className="justify-center pl-2 border-l border-white/10 ml-2">
-          <View className="bg-white/10 p-2 rounded-xl">
-            <QrCode color="white" size={24} />
-          </View>
+        <View className="bg-white/5 px-4 py-2 flex-row justify-between items-center">
+          <Text className="text-white/60 text-xs font-bold uppercase tracking-widest">
+            {tierName}
+          </Text>
+          <Text className="text-orange-500 text-xs font-bold">Tap to View</Text>
         </View>
-      </View>
+      </TouchableOpacity>
+    );
+  };
 
-      {/* Footer Strip */}
-      <View className="bg-white/5 px-4 py-2 flex-row justify-between items-center">
-        <Text className="text-white/60 text-xs font-bold uppercase tracking-widest">
-          General Access
-        </Text>
-        <Text className="text-orange-500 text-xs font-bold">Tap to View</Text>
-      </View>
-    </TouchableOpacity>
-  );
+  const filteredTickets = tickets.filter((t) => {
+    const title = t.events?.title || "";
+    return title.toLowerCase().includes(searchQuery.toLowerCase());
+  });
 
   return (
     <View className="flex-1 bg-[#121212]">
@@ -145,7 +172,6 @@ const MyTicketsScreen = () => {
 
       <SafeAreaView className="flex-1" edges={["left", "right"]}>
         <View className="flex-1 pt-32 px-6">
-          {/* Header */}
           <View className="flex-row items-center mb-6">
             <TouchableOpacity
               onPress={() => navigation.goBack()}
@@ -161,32 +187,34 @@ const MyTicketsScreen = () => {
             </Text>
           </View>
 
-          {/* Search Bar */}
           <View className="flex-row items-center bg-white/10 border border-white/20 rounded-2xl px-4 h-14 mb-8">
             <Search color="#FA8900" size={24} className="mr-3" />
             <TextInput
-              placeholder="Search your tickets..."
+              placeholder="Search..."
               placeholderTextColor="#666"
               className="flex-1 text-white text-lg font-medium h-full"
               style={{ fontFamily: "Jost-Medium" }}
               value={searchQuery}
-              onChangeText={handleSearch}
+              onChangeText={setSearchQuery}
             />
           </View>
 
-          {/* List */}
-          <FlatList
-            data={tickets}
-            renderItem={renderTicket}
-            keyExtractor={(item) => item.id}
-            showsVerticalScrollIndicator={false}
-            contentContainerStyle={{ paddingBottom: 120 }}
-            ListEmptyComponent={
-              <View className="items-center mt-10">
-                <Text className="text-gray-500">No tickets found.</Text>
-              </View>
-            }
-          />
+          {loading ? (
+            <ActivityIndicator color="#FA8900" size="large" className="mt-10" />
+          ) : (
+            <FlatList
+              data={filteredTickets}
+              renderItem={renderTicket}
+              keyExtractor={(item) => item.id}
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={{ paddingBottom: 120 }}
+              ListEmptyComponent={
+                <View className="items-center mt-10">
+                  <Text className="text-gray-500">No tickets found.</Text>
+                </View>
+              }
+            />
+          )}
         </View>
       </SafeAreaView>
       <BottomNav />

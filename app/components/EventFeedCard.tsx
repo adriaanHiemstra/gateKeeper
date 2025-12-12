@@ -45,6 +45,7 @@ type EventFeedCardProps = {
   onPressHost: () => void;
   onViewEvent: () => void;
   showSocial?: boolean;
+  tags?: string[];
 };
 
 // --- HELPER: Normalize Source ---

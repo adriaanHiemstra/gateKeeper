@@ -76,6 +76,7 @@ const HomeScreen = () => {
             username,
             avatar_url
           )
+            tier_data:ticket_tiers (*)
         `
         )
         .order("date", { ascending: true });
@@ -148,6 +149,7 @@ const HomeScreen = () => {
   // Helper for navigation
   const goToEventProfile = (item: any) => {
     navigation.navigate("EventProfile", {
+      eventId: item.id,
       eventName: item.title,
       attendees: 120,
       logo: item.profiles?.avatar_url
@@ -161,6 +163,8 @@ const HomeScreen = () => {
       location: item.location_text,
       description: item.description,
       ticketUrl: item.ticket_url,
+      tags: item.tags || [],
+      ticket_tiers: item.tier_data || [],
     });
   };
 

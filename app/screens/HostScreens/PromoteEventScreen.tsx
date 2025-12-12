@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -9,10 +9,11 @@ import {
   Share,
   Alert,
   Dimensions,
+  ActivityIndicator,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
-import { useNavigation } from "@react-navigation/native";
+import { useNavigation, useRoute, RouteProp } from "@react-navigation/native";
 import {
   ArrowLeft,
   Share2,
@@ -24,25 +25,51 @@ import {
   CheckCircle,
 } from "lucide-react-native";
 
-// Components
 import HostTopBanner from "../../components/HostTopBanner";
 import HostBottomNav from "../../components/HostBottomNav";
-
-// Styles
+import { supabase } from "../../lib/supabase";
 import { bannerGradient, electricGradient } from "../../styles/colours";
+import { RootStackParamList } from "../../types/types";
 
 const { width } = Dimensions.get("window");
+type PromoteRouteProp = RouteProp<RootStackParamList, "PromoteEvent">;
 
 const PromoteEventScreen = () => {
   const navigation = useNavigation();
+  const route = useRoute<PromoteRouteProp>();
+  const { eventId } = route.params || { eventId: "1" };
+
+  const [loading, setLoading] = useState(true);
+  const [eventData, setEventData] = useState<any>(null);
   const [isBoosted, setIsBoosted] = useState(false);
 
-  // Mock Share Function
+  useEffect(() => {
+    fetchEvent();
+  }, []);
+
+  const fetchEvent = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("events")
+        .select("*")
+        .eq("id", eventId)
+        .single();
+
+      if (error) throw error;
+      setEventData(data);
+      setIsBoosted(data.is_boosted || false);
+    } catch (err) {
+      console.log(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleShare = async () => {
+    if (!eventData) return;
     try {
       await Share.share({
-        message:
-          "Join us at Summer Slam 2025! Get your tickets here: https://gatekeeper.com/e/summer-slam",
+        message: `Join us at ${eventData.title}! Get tickets here: https://gatekeeper.com/e/${eventId}`,
       });
     } catch (error) {
       console.log(error);
@@ -57,9 +84,16 @@ const PromoteEventScreen = () => {
         { text: "Cancel", style: "cancel" },
         {
           text: "Pay R 500",
-          onPress: () => {
-            setIsBoosted(true);
-            Alert.alert("Success", "Your event is now featured!");
+          onPress: async () => {
+            const { error } = await supabase
+              .from("events")
+              .update({ is_boosted: true })
+              .eq("id", eventId);
+
+            if (!error) {
+              setIsBoosted(true);
+              Alert.alert("Success", "Your event is now featured!");
+            }
           },
         },
       ]
@@ -67,23 +101,33 @@ const PromoteEventScreen = () => {
   };
 
   const handlePushBlast = () => {
-    Alert.alert("Notify Followers", "Blast sent to 1,240 followers!");
+    Alert.alert("Notify Followers", "Blast sent to your followers!");
   };
+
+  if (loading) {
+    return (
+      <View className="flex-1 bg-[#121212] justify-center items-center">
+        <ActivityIndicator color="#D087FF" size="large" />
+      </View>
+    );
+  }
+
+  const dateObj = new Date(eventData?.date);
+  const dateText = `${dateObj.getDate()} ${dateObj
+    .toLocaleString("default", { month: "short" })
+    .toUpperCase()}`;
 
   return (
     <View className="flex-1 bg-[#121212]">
       <LinearGradient {...bannerGradient} style={StyleSheet.absoluteFill} />
       <View className="absolute inset-0 bg-black/40" />
-
       <HostTopBanner />
 
       <SafeAreaView className="flex-1" edges={["left", "right"]}>
         <ScrollView
           className="flex-1 px-6"
-          showsVerticalScrollIndicator={false}
           contentContainerStyle={{ paddingTop: 120, paddingBottom: 140 }}
         >
-          {/* HEADER */}
           <View className="flex-row items-center mb-8">
             <TouchableOpacity
               onPress={() => navigation.goBack()}
@@ -104,26 +148,33 @@ const PromoteEventScreen = () => {
             </View>
           </View>
 
-          {/* 1. THE SHARE CARD (Preview) */}
+          {/* 1. PREVIEW CARD */}
           <Text className="text-white text-xl font-bold mb-4">
             Social Share
           </Text>
           <View className="items-center mb-8">
             <View
               className="bg-white rounded-3xl overflow-hidden shadow-2xl shadow-black/80"
-              style={{ width: width * 0.7, height: width * 0.9 }} // Poster aspect ratio
+              style={{ width: width * 0.7, height: width * 0.9 }}
             >
               <Image
-                source={require("../../assets/imagePlaceHolder1.png")}
+                source={
+                  eventData?.banner_url
+                    ? { uri: eventData.banner_url }
+                    : require("../../assets/imagePlaceHolder1.png")
+                }
                 className="w-full h-[70%]"
                 resizeMode="cover"
               />
               <View className="flex-1 bg-black p-4 justify-center items-center">
-                <Text className="text-white font-bold text-xl mb-1 text-center">
-                  SUMMER SLAM
+                <Text
+                  className="text-white font-bold text-xl mb-1 text-center"
+                  numberOfLines={2}
+                >
+                  {eventData?.title}
                 </Text>
                 <Text className="text-purple-400 font-bold text-sm mb-2">
-                  28 OCT • CLIFTON
+                  {dateText} • {eventData?.location_text?.split(",")[0]}
                 </Text>
                 <View className="bg-white px-4 py-2 rounded-full">
                   <Text className="text-black font-bold text-xs">
@@ -134,7 +185,7 @@ const PromoteEventScreen = () => {
             </View>
           </View>
 
-          {/* Social Action Buttons */}
+          {/* Buttons */}
           <View className="flex-row gap-3 mb-10">
             <TouchableOpacity
               onPress={handleShare}
@@ -143,14 +194,12 @@ const PromoteEventScreen = () => {
               <Share2 color="white" size={24} className="mb-2" />
               <Text className="text-white font-bold">Share</Text>
             </TouchableOpacity>
-
             <TouchableOpacity className="flex-1 bg-pink-600/20 border border-pink-500/50 py-4 rounded-xl items-center justify-center">
               <Instagram color="#ec4899" size={24} className="mb-2" />
               <Text className="text-pink-400 font-bold">Stories</Text>
             </TouchableOpacity>
-
             <TouchableOpacity
-              onPress={() => Alert.alert("Copied", "Link copied to clipboard")}
+              onPress={() => Alert.alert("Copied", "Link copied!")}
               className="flex-1 bg-white/10 border border-white/10 py-4 rounded-xl items-center justify-center"
             >
               <Copy color="white" size={24} className="mb-2" />
@@ -158,7 +207,7 @@ const PromoteEventScreen = () => {
             </TouchableOpacity>
           </View>
 
-          {/* 2. DIRECT MARKETING (Push Blast) */}
+          {/* 2. DIRECT MARKETING */}
           <Text className="text-white text-xl font-bold mb-4">
             Direct Marketing
           </Text>
@@ -171,8 +220,7 @@ const PromoteEventScreen = () => {
                 </Text>
               </View>
               <Text className="text-gray-400 text-sm">
-                Send a push notification to your 1,240 followers. (1 Free Blast
-                left)
+                Send a push notification to your followers.
               </Text>
             </View>
             <TouchableOpacity
@@ -183,16 +231,15 @@ const PromoteEventScreen = () => {
             </TouchableOpacity>
           </View>
 
-          {/* 3. PAID BOOST (Upsell) */}
+          {/* 3. PAID BOOST */}
           <Text className="text-white text-xl font-bold mb-4">
             Paid Promotion
           </Text>
           <LinearGradient
-            colors={isBoosted ? ["#059669", "#047857"] : ["#4338ca", "#3730a3"]} // Green if active, Indigo if not
+            colors={isBoosted ? ["#059669", "#047857"] : ["#4338ca", "#3730a3"]}
             className="rounded-3xl p-1 relative overflow-hidden"
           >
             <View className="bg-[#121212] rounded-[22px] p-6">
-              {/* Header */}
               <View className="flex-row justify-between items-start mb-4">
                 <View className="flex-row items-center">
                   <View
@@ -211,9 +258,7 @@ const PromoteEventScreen = () => {
                       {isBoosted ? "Event is Boosted!" : "Boost Event"}
                     </Text>
                     <Text className="text-gray-400 text-xs">
-                      {isBoosted
-                        ? "Expires in 23h 10m"
-                        : "Get 10x more visibility"}
+                      {isBoosted ? "Expires in 24h" : "Get 10x more visibility"}
                     </Text>
                   </View>
                 </View>
@@ -224,35 +269,16 @@ const PromoteEventScreen = () => {
                 )}
               </View>
 
-              {/* Stats/Benefits */}
-              <View className="flex-row gap-4 mb-6">
-                <View className="flex-row items-center">
-                  <TrendingUp
-                    color={isBoosted ? "#4ade80" : "#FACC15"}
-                    size={16}
-                    className="mr-2"
-                  />
-                  <Text className="text-gray-300 text-sm">
-                    Featured on Home
-                  </Text>
-                </View>
-                <View className="flex-row items-center">
-                  <Users
-                    color={isBoosted ? "#4ade80" : "#FACC15"}
-                    size={16}
-                    className="mr-2"
-                  />
-                  <Text className="text-gray-300 text-sm">Top of Search</Text>
-                </View>
-              </View>
-
-              {/* Button */}
-              <TouchableOpacity activeOpacity={0.8} disabled={isBoosted}>
+              <TouchableOpacity
+                activeOpacity={0.8}
+                disabled={isBoosted}
+                onPress={handleBoost}
+              >
                 <LinearGradient
                   {...electricGradient}
                   colors={
                     isBoosted ? ["#065f46", "#064e3b"] : ["#B92BFF", "#6500B0"]
-                  } // Dark green if boosted
+                  }
                   className="w-full py-3 rounded-xl items-center justify-center"
                 >
                   <Text className="text-white font-bold text-lg tracking-wide">

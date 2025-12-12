@@ -1,3 +1,5 @@
+// app/screens/CreateEventScreen.tsx
+
 import React, { useState, useMemo } from "react";
 import {
   View,
@@ -30,12 +32,11 @@ import {
   Search,
   Check,
   Tag,
-  Video as VideoIcon,
   Ticket,
   Plus,
-  Pencil,
   Hash,
   Sparkles,
+  Star, // ✅ Added Star icon for the banner badge
 } from "lucide-react-native";
 import * as ImagePicker from "expo-image-picker";
 import { KeyboardAwareScrollView } from "react-native-keyboard-aware-scroll-view";
@@ -51,7 +52,6 @@ import { useAuth } from "../../context/AuthContext";
 import HostTopBanner from "../../components/HostTopBanner";
 import { bannerGradient, electricGradient } from "../../styles/colours";
 
-// Enable LayoutAnimation for Android
 if (
   Platform.OS === "android" &&
   UIManager.setLayoutAnimationEnabledExperimental
@@ -188,17 +188,14 @@ const CreateEventScreen = () => {
   const navigation = useNavigation();
   const { user } = useAuth();
 
-  // Form State
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [isPublic, setIsPublic] = useState(true);
 
-  // Tickets State
   const [tickets, setTickets] = useState<TicketTier[]>([
     { name: "General Admission", price: "150", quantity: "100", active: true },
   ]);
 
-  // Ticket Modal State
   const [showTicketModal, setShowTicketModal] = useState(false);
   const [editingTicketIndex, setEditingTicketIndex] = useState<number | null>(
     null
@@ -236,7 +233,6 @@ const CreateEventScreen = () => {
 
   const [loading, setLoading] = useState(false);
 
-  // --- LOGIC: Filter Past Times ---
   const todayDateString = new Date().toISOString().split("T")[0];
 
   const availableTimes = useMemo(() => {
@@ -291,7 +287,6 @@ const CreateEventScreen = () => {
     setMediaItems(updated);
   };
 
-  // --- TICKET HANDLERS ---
   const openTicketModal = (index?: number) => {
     if (index !== undefined) {
       setEditingTicketIndex(index);
@@ -375,27 +370,50 @@ const CreateEventScreen = () => {
           ? new Date(`${endDate}T${endTime}:00`).toISOString()
           : null;
 
-      const { error } = await supabase.from("events").insert({
-        host_id: user?.id,
-        title: title,
-        description: description,
-        date: startISO,
-        end_date: endISO,
-        location_text: location,
-        banner_url: uploadedUrls[0],
-        images: uploadedUrls,
-        tags: selectedTags,
-        is_public: isPublic,
-        category: selectedTags[0] || "Other",
-        ticket_tiers: tickets, // Save full ticket object
-      });
+      const { data: eventData, error: eventError } = await supabase
+        .from("events")
+        .insert({
+          host_id: user?.id,
+          title: title,
+          description: description,
+          date: startISO,
+          end_date: endISO,
+          location_text: location,
+          banner_url: uploadedUrls[0], // Index 0 is always banner
+          images: uploadedUrls,
+          tags: selectedTags,
+          is_public: isPublic,
+          category: selectedTags[0] || "Other",
+        })
+        .select()
+        .single();
 
-      if (error) throw error;
+      if (eventError) throw eventError;
+
+      const newEventId = eventData.id;
+
+      if (tickets.length > 0) {
+        const tiersToInsert = tickets.map((t) => ({
+          event_id: newEventId,
+          name: t.name,
+          price: parseFloat(t.price),
+          quantity_total: parseInt(t.quantity) || 100,
+          quantity_sold: 0,
+          is_active: t.active,
+        }));
+
+        const { error: tierError } = await supabase
+          .from("ticket_tiers")
+          .insert(tiersToInsert);
+
+        if (tierError) throw tierError;
+      }
 
       Alert.alert("Success!", "Your event is live.");
       navigation.goBack();
     } catch (error: any) {
       Alert.alert("Error", error.message);
+      console.error(error);
     } finally {
       setLoading(false);
     }
@@ -409,13 +427,12 @@ const CreateEventScreen = () => {
       <HostTopBanner />
 
       <SafeAreaView className="flex-1" edges={["left", "right"]}>
-        {/* ✅ MAIN SCREEN SCROLLER: Increased extraScrollHeight & tuned props */}
         <KeyboardAwareScrollView
           className="flex-1 px-6"
           showsVerticalScrollIndicator={false}
           contentContainerStyle={{ paddingTop: 120, paddingBottom: 140 }}
           enableOnAndroid={true}
-          extraScrollHeight={120} // Slightly increased to push Description higher
+          extraScrollHeight={120}
           keyboardShouldPersistTaps="handled"
           enableAutomaticScroll={true}
         >
@@ -434,7 +451,7 @@ const CreateEventScreen = () => {
             </Text>
           </View>
 
-          {/* 1. MEDIA */}
+          {/* ... 1. MEDIA ... */}
           <Text className="text-white text-xl font-bold mb-4">Event Media</Text>
           <ScrollView
             horizontal
@@ -458,6 +475,21 @@ const CreateEventScreen = () => {
                 onPress={() => handlePickMedia(index)}
                 className="relative mr-3"
               >
+                {/* ✅ VISUAL MARKER FOR BANNER (INDEX 0) */}
+                {index === 0 && (
+                  <View className="absolute top-0 left-0 z-20 m-2 bg-orange-500 px-2 py-1 rounded-md shadow-lg flex-row items-center">
+                    <Star
+                      size={10}
+                      color="white"
+                      fill="white"
+                      className="mr-2"
+                    />
+                    <Text className="text-white text-[10px] font-bold uppercase tracking-wide ml-1">
+                      BANNER
+                    </Text>
+                  </View>
+                )}
+
                 {item.type === "video" ? (
                   <Video
                     source={{ uri: item.uri }}
@@ -466,6 +498,8 @@ const CreateEventScreen = () => {
                       height: 160,
                       borderRadius: 16,
                       backgroundColor: "#000",
+                      borderWidth: index === 0 ? 2 : 0, // Orange border for banner
+                      borderColor: index === 0 ? "#FA8900" : "transparent",
                     }}
                     resizeMode={ResizeMode.COVER}
                     isMuted
@@ -474,7 +508,9 @@ const CreateEventScreen = () => {
                 ) : (
                   <Image
                     source={{ uri: item.uri }}
-                    className="w-32 h-40 rounded-2xl bg-gray-800"
+                    className={`w-32 h-40 rounded-2xl bg-gray-800 ${
+                      index === 0 ? "border-2 border-orange-500" : ""
+                    }`}
                     resizeMode="cover"
                   />
                 )}
@@ -484,21 +520,11 @@ const CreateEventScreen = () => {
                 >
                   <X color="white" size={12} />
                 </TouchableOpacity>
-                <View className="absolute bottom-2 right-2 bg-black/60 p-1.5 rounded-full">
-                  <Pencil color="white" size={12} />
-                </View>
-                {index === 0 && (
-                  <View className="absolute bottom-2 left-2 bg-purple-600 px-2 py-0.5 rounded">
-                    <Text className="text-white text-[10px] font-bold">
-                      COVER
-                    </Text>
-                  </View>
-                )}
               </TouchableOpacity>
             ))}
           </ScrollView>
 
-          {/* 2. DETAILS */}
+          {/* ... 2. DETAILS ... */}
           <Text className="text-white text-xl font-bold mb-4">Basic Info</Text>
 
           <InputField
@@ -568,7 +594,7 @@ const CreateEventScreen = () => {
             multiline={true}
           />
 
-          {/* 3. TICKET TIERS SECTION */}
+          {/* ... 3. TICKET TIERS SECTION ... */}
           <View className="mb-8">
             <View className="flex-row justify-between items-end mb-4">
               <Text className="text-white text-xl font-bold">Ticket Tiers</Text>
@@ -577,13 +603,11 @@ const CreateEventScreen = () => {
               </Text>
             </View>
 
-            {/* Ticket Cards List */}
             {tickets.map((ticket, index) => (
               <TouchableOpacity
                 key={index}
                 onPress={() => openTicketModal(index)}
                 activeOpacity={0.7}
-                // ✅ CONDITIONAL STYLING: Green highlight if Active, else Standard dark
                 className={`rounded-2xl p-5 mb-3 flex-row items-center justify-between border ${
                   ticket.active
                     ? "bg-green-500/10 border-green-500/30"
@@ -592,13 +616,11 @@ const CreateEventScreen = () => {
               >
                 <View className="flex-1">
                   <View className="flex-row items-center mb-2">
-                    {/* Icon Changes Color too */}
                     <Ticket
                       color={ticket.active ? "#4ade80" : "white"}
                       size={20}
                       className="mr-3"
                     />
-
                     <Text
                       className={`text-xl font-bold mr-3 ml-2 ${
                         ticket.active ? "text-white" : "text-gray-400"
@@ -606,14 +628,6 @@ const CreateEventScreen = () => {
                     >
                       {ticket.name}
                     </Text>
-
-                    {!ticket.active && (
-                      <View className="bg-red-500/20 px-2 py-0.5 ml-2 rounded border border-red-500/50">
-                        <Text className="text-red-400 text-[10px] font-bold uppercase">
-                          Inactive
-                        </Text>
-                      </View>
-                    )}
                   </View>
                   <View className="flex-row items-center pl-8">
                     <Tag color="#666" size={14} className="mr-1" />
@@ -625,7 +639,6 @@ const CreateEventScreen = () => {
                   </View>
                 </View>
 
-                {/* Price Badge */}
                 <View
                   className={`px-4 py-2 rounded-xl border ml-3 ${
                     ticket.active
@@ -644,7 +657,6 @@ const CreateEventScreen = () => {
               </TouchableOpacity>
             ))}
 
-            {/* Add New Button */}
             <TouchableOpacity
               onPress={() => openTicketModal()}
               className="flex-row items-center justify-center bg-white/5 border border-dashed border-white/30 rounded-2xl py-5 mt-2"
@@ -658,7 +670,7 @@ const CreateEventScreen = () => {
             </TouchableOpacity>
           </View>
 
-          {/* PUBLIC SWITCH */}
+          {/* ... PUBLIC SWITCH ... */}
           <View className="flex-row justify-between items-center bg-white/5 p-5 rounded-2xl mb-8 border border-white/5">
             <View>
               <Text className="text-white font-bold text-lg">Public Event</Text>
@@ -670,7 +682,7 @@ const CreateEventScreen = () => {
           </View>
         </KeyboardAwareScrollView>
 
-        {/* PUBLISH BUTTON */}
+        {/* ... PUBLISH BUTTON ... */}
         <View className="absolute bottom-0 left-0 right-0 p-6 bg-[#121212]/95 border-t border-white/10 blur-xl">
           <TouchableOpacity
             activeOpacity={0.8}
@@ -700,13 +712,10 @@ const CreateEventScreen = () => {
       {/* --- TICKET MODAL --- */}
       <Modal visible={showTicketModal} transparent animationType="slide">
         <View className="flex-1 justify-end bg-black/60">
-          {/* Main Modal Container */}
           <View className="h-[85%] bg-[#121212] rounded-t-[40px] overflow-hidden border-t border-white/20 shadow-2xl shadow-purple-500/20">
-            {/* 1. GRADIENT HEADER */}
+            {/* Header */}
             <LinearGradient
               colors={["#240b36", "#121212"]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 0, y: 1 }}
               className="px-6 pt-8 pb-6 border-b border-white/5"
             >
               <View className="flex-row justify-between items-center">
@@ -727,7 +736,7 @@ const CreateEventScreen = () => {
               </View>
             </LinearGradient>
 
-            {/* 2. FORM CONTENT - ✅ REPLACED ScrollView WITH KeyboardAwareScrollView */}
+            {/* Form */}
             <KeyboardAwareScrollView
               className="flex-1 px-6 pt-8"
               contentContainerStyle={{ paddingBottom: 100 }}
@@ -756,9 +765,8 @@ const CreateEventScreen = () => {
                 </View>
               </View>
 
-              {/* Price & Quantity Grid */}
+              {/* Price & Quantity */}
               <View className="flex-row gap-4 mb-6">
-                {/* Price */}
                 <View className="flex-1">
                   <Text className="text-gray-400 font-bold mb-3 ml-2 uppercase tracking-wide text-xs">
                     Price
@@ -780,7 +788,6 @@ const CreateEventScreen = () => {
                   </View>
                 </View>
 
-                {/* Quantity */}
                 <View className="flex-1">
                   <Text className="text-gray-400 font-bold mb-3 ml-2 uppercase tracking-wide text-xs">
                     Quantity
@@ -803,7 +810,7 @@ const CreateEventScreen = () => {
                 </View>
               </View>
 
-              {/* Status Card */}
+              {/* Status */}
               <View className="mb-8">
                 <Text className="text-gray-400 font-bold mb-3 ml-2 uppercase tracking-wide text-xs">
                   Availability
@@ -853,11 +860,6 @@ const CreateEventScreen = () => {
                             ? "Ticket is Active"
                             : "Ticket Paused"}
                         </Text>
-                        <Text className="text-gray-400 text-xs">
-                          {tempTicket.active
-                            ? "Attendees can purchase this ticket."
-                            : "Hidden from attendees."}
-                        </Text>
                       </View>
                     </View>
                     <CustomSwitch
@@ -871,10 +873,9 @@ const CreateEventScreen = () => {
               </View>
             </KeyboardAwareScrollView>
 
-            {/* 3. FOOTER ACTIONS */}
+            {/* Footer */}
             <View className="absolute bottom-0 left-0 right-0 p-6 bg-[#121212] border-t border-white/10">
               <View className="flex-row gap-4">
-                {/* Delete Button (Only if editing) */}
                 {editingTicketIndex !== null && (
                   <TouchableOpacity
                     onPress={deleteTicket}
@@ -883,8 +884,6 @@ const CreateEventScreen = () => {
                     <Trash2 color="#f87171" size={24} />
                   </TouchableOpacity>
                 )}
-
-                {/* Main Save Button */}
                 <TouchableOpacity
                   onPress={saveTicket}
                   className={`${
@@ -912,7 +911,7 @@ const CreateEventScreen = () => {
         </View>
       </Modal>
 
-      {/* --- CATEGORY PICKER --- */}
+      {/* --- OTHER MODALS REMAIN UNCHANGED --- */}
       <Modal visible={showCategoryPicker} transparent animationType="slide">
         <View className="flex-1 justify-end bg-black/80">
           <View className="bg-[#1E1E1E] rounded-t-3xl h-[80%] overflow-hidden">
@@ -963,7 +962,6 @@ const CreateEventScreen = () => {
         </View>
       </Modal>
 
-      {/* --- DATE/TIME MODALS --- */}
       <Modal visible={!!activeDateModal} transparent animationType="slide">
         <View className="flex-1 justify-end bg-black/80">
           <View className="bg-[#1E1E1E] rounded-t-3xl p-4 h-[70%]">
@@ -1035,7 +1033,6 @@ const CreateEventScreen = () => {
         </View>
       </Modal>
 
-      {/* --- LOCATION PICKER --- */}
       <Modal visible={showLocationPicker} transparent animationType="slide">
         <View className="flex-1 bg-[#1E1E1E]">
           <SafeAreaView className="flex-1">

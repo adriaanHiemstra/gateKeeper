@@ -1,3 +1,4 @@
+// app/screens/TicketDisplayScreen.tsx
 import React from "react";
 import {
   View,
@@ -6,12 +7,13 @@ import {
   StyleSheet,
   Image,
   Dimensions,
+  Alert,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { useNavigation, useRoute, RouteProp } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import { ArrowLeft, Info } from "lucide-react-native";
+import { ArrowLeft } from "lucide-react-native";
 
 // Components
 import TopBanner from "../components/TopBanner";
@@ -24,30 +26,39 @@ import { RootStackParamList } from "../types/types";
 const { width } = Dimensions.get("window");
 const QR_SIZE = width * 0.7;
 
-type TicketDisplayRouteProp = RouteProp<RootStackParamList, "TicketDisplay">;
-
 const TicketDisplayScreen = () => {
   const navigation =
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const route = useRoute<TicketDisplayRouteProp>();
+  const route = useRoute<any>();
 
   const {
-    eventTitle = "Just Between Us",
+    eventId,
+    eventTitle = "Event Name",
     ticketId = "#GK-882910",
     eventImage,
     eventLocation,
     eventTime,
+    ticketTierName = "General Access",
+    ticketPrice,
   } = route.params || {};
 
   const handleViewEvent = () => {
+    if (!eventId) {
+      Alert.alert(
+        "Notice",
+        "Event details are not linked to this ticket preview."
+      );
+      return;
+    }
+
     navigation.navigate("EventProfile", {
+      eventId: eventId,
       eventName: eventTitle,
       attendees: 120,
       logo: eventImage || require("../assets/event-placeholder.png"),
       banner: eventImage || require("../assets/event-placeholder.png"),
       location: eventLocation || "Unknown Location",
       time: eventTime || "Date TBA",
-      description: `Join us for ${eventTitle}! Get ready for an unforgettable experience.`,
     });
   };
 
@@ -57,11 +68,12 @@ const TicketDisplayScreen = () => {
       <TopBanner />
 
       <SafeAreaView className="flex-1" edges={["left", "right"]}>
-        <View className="flex-1 pt-32 px-6 items-center">
+        {/* ✅ CHANGED: Increased pt-24 to pt-32 and added mt-4 to push content down */}
+        <View className="flex-1 pt-32 mt-4 px-6 items-center">
           {/* Header */}
-          <View className="w-full flex-row items-center mb-8">
+          <View className="w-full flex-row items-center mb-6">
             <TouchableOpacity
-              onPress={() => navigation.goBack()}
+              onPress={() => navigation.navigate("Home")}
               className="mr-4 bg-white/10 p-2 rounded-full"
             >
               <ArrowLeft color="white" size={24} />
@@ -70,22 +82,28 @@ const TicketDisplayScreen = () => {
             <Text
               className="text-white text-3xl font-bold flex-1"
               style={{ fontFamily: "Jost-Medium" }}
-              numberOfLines={1}
             >
-              Entry Ticket
+              Your Ticket
             </Text>
           </View>
 
-          {/* Event Details */}
+          {/* Ticket Type Badge */}
+          <View className="bg-orange-500/20 px-4 py-1 rounded-full mb-4 border border-orange-500/50">
+            <Text className="text-orange-400 font-bold uppercase tracking-widest text-xs">
+              {ticketTierName}
+            </Text>
+          </View>
+
+          {/* Event Title */}
           <Text
-            className="text-white text-4xl font-bold text-center mb-2 leading-tight"
+            className="text-white text-3xl font-bold text-center mb-2 leading-tight"
             style={{ fontFamily: "Jost-Medium" }}
           >
             {eventTitle}
           </Text>
 
-          <Text className="text-gray-400 text-lg mb-10 font-medium tracking-wider">
-            ID: {ticketId}
+          <Text className="text-gray-400 text-base mb-8 font-medium tracking-wider">
+            ID: {ticketId} • {ticketPrice ? `R${ticketPrice}` : ""}
           </Text>
 
           {/* QR Code Card */}
@@ -95,7 +113,7 @@ const TicketDisplayScreen = () => {
           >
             <Image
               source={{
-                uri: "https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=GateKeeperTicket123",
+                uri: `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${ticketId}`,
               }}
               className="w-full h-full p-4"
               resizeMode="contain"
@@ -104,14 +122,13 @@ const TicketDisplayScreen = () => {
           </View>
 
           <Text
-            // 👇 FIX: Changed 'mb-auto' to 'mb-8' so it doesn't push the button away
             className="text-white/60 text-base text-center font-medium mb-8"
             style={{ fontFamily: "Jost-Medium" }}
           >
-            Scan at the door for entry.
+            Show this at the door
           </Text>
 
-          {/* EVENT INFO BUTTON (Now sits right under the text) */}
+          {/* EVENT INFO BUTTON */}
           <TouchableOpacity
             onPress={handleViewEvent}
             activeOpacity={0.9}
