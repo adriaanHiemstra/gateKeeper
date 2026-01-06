@@ -46,63 +46,89 @@ if (
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
-// --- HELPERS ---
+// --- 1. DATA & COLORS ---
 
-// 1. Helper for Category Colors
-const GET_CATEGORY_COLOR = (category: string) => {
-  const cat = (category || "").toLowerCase();
-  if (["techno", "house", "edm", "electronic"].some((x) => cat.includes(x)))
-    return "#A855F7";
-  if (["live", "rock", "jazz", "band"].some((x) => cat.includes(x)))
-    return "#F43F5E";
-  if (["sport", "rugby", "soccer"].some((x) => cat.includes(x)))
-    return "#F97316";
-  if (["hike", "nature", "outdoor"].some((x) => cat.includes(x)))
-    return "#10B981";
-  return "#3B82F6"; // Default blue
-};
-
-const ALL_INTERESTS = [
-  "Techno",
-  "House",
-  "Live Music",
-  "Jazz",
-  "Rugby",
-  "Soccer",
-  "Hikes",
-  "Comedy",
-  "Theater",
+const RAINBOW_MESH: [string, string, ...string[]] = [
+  "#A855F7",
+  "#F43F5E",
+  "#F97316",
+  "#10B981",
+  "#3B82F6",
 ];
+
 const TIME_FILTERS = ["Today", "Tomorrow", "This Weekend", "This Month"];
 
-// 2. Helper for Date Logic (INCORPORATED HERE)
+// --- HELPERS ---
+
+const GET_CATEGORY_COLOR = (category: string) => {
+  const cat = (category || "").toLowerCase();
+  if (
+    [
+      "music",
+      "techno",
+      "house",
+      "edm",
+      "amapiano",
+      "jazz",
+      "rock",
+      "dnb",
+      "electronic",
+      "psytrance",
+      "afrobeats",
+    ].some((x) => cat.includes(x))
+  )
+    return "#A855F7";
+  if (
+    [
+      "sport",
+      "rugby",
+      "soccer",
+      "cricket",
+      "run",
+      "hike",
+      "tennis",
+      "yoga",
+      "surf",
+    ].some((x) => cat.includes(x))
+  )
+    return "#F97316";
+  if (
+    ["nature", "outdoor", "garden", "market", "food", "farmer"].some((x) =>
+      cat.includes(x)
+    )
+  )
+    return "#10B981";
+  if (
+    ["comedy", "art", "theater", "show", "cinema", "magic"].some((x) =>
+      cat.includes(x)
+    )
+  )
+    return "#F43F5E";
+  return "#3B82F6";
+};
+
 const getDateRangeForFilter = (filter: string) => {
   const now = new Date();
   let start = new Date(now);
   let end = new Date(now);
 
-  // Set to start/end of day
   start.setHours(0, 0, 0, 0);
   end.setHours(23, 59, 59, 999);
 
   if (filter === "Today")
     return { start: start.toISOString(), end: end.toISOString() };
-
   if (filter === "Tomorrow") {
     start.setDate(now.getDate() + 1);
     end.setDate(now.getDate() + 1);
     return { start: start.toISOString(), end: end.toISOString() };
   }
-
   if (filter === "This Weekend") {
-    // Calculate next Friday
     const day = now.getDay();
     const dist = 5 - day + (day >= 5 ? 7 : 0);
     start.setDate(now.getDate() + dist);
-    end.setDate(start.getDate() + 2); // Sunday
+    end.setDate(start.getDate() + 2);
     return { start: start.toISOString(), end: end.toISOString() };
   }
-
   if (filter === "This Month") {
     start.setDate(1);
     end.setMonth(now.getMonth() + 1);
@@ -118,7 +144,10 @@ const SearchScreen = () => {
   // --- STATE ---
   const [query, setQuery] = useState("");
   const [isExpanded, setIsExpanded] = useState(false);
-  const [activeFilters, setActiveFilters] = useState<string[]>([]);
+
+  // Filter State
+  const [availableTags, setAvailableTags] = useState<string[]>([]);
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [activeTimeFilters, setActiveTimeFilters] = useState<string[]>([]);
 
   // Data State
@@ -133,62 +162,90 @@ const SearchScreen = () => {
   const [markedDates, setMarkedDates] = useState<any>({});
   const [isCustomDateActive, setIsCustomDateActive] = useState(false);
 
+  // --- 0. INITIAL FETCH (CATEGORIES) ---
+  useEffect(() => {
+    const fetchCategories = async () => {
+      try {
+        const { data, error } = await supabase
+          .from("categories")
+          .select("name")
+          .order("name", { ascending: true });
+
+        if (error) throw error;
+        if (data) {
+          const tags = data.map((cat: any) => cat.name);
+          setAvailableTags(tags);
+        }
+      } catch (err) {
+        console.log("Error fetching categories:", err);
+      }
+    };
+    fetchCategories();
+  }, []);
+
   // --- 1. SEARCH FUNCTION ---
   const fetchEvents = useCallback(async () => {
     setLoading(true);
     try {
-      // Start building the query
       const now = new Date().toISOString();
 
       let dbQuery = supabase
         .from("events")
         .select(
-          `
-          *,
-          profiles:host_id ( username, avatar_url ),
-          venues:venue_id ( name, address )
-        `
+          `*, profiles:host_id ( username, avatar_url ), venues:venue_id ( name, address )`
         )
         .gte("date", now);
 
-      // A. Text Search (Title OR Description)
+      // A. Text Search (Broad Match)
       if (query.trim()) {
         const text = query.trim();
-        dbQuery = dbQuery.or(
-          `title.ilike.%${text}%,description.ilike.%${text}%`
-        );
-      }
-
-      // B. Category Filter
-      if (activeFilters.length > 0) {
-        // Build a filter string: category.ilike.%Techno%,category.ilike.%House%
-        const categoriesString = activeFilters
-          .map((f) => `category.ilike.%${f}%`)
+        const searchTerms = text.split(" ");
+        const conditions = searchTerms
+          .filter((word) => word.length > 2)
+          .map((word) => `title.ilike.%${word}%,description.ilike.%${word}%`)
           .join(",");
-        dbQuery = dbQuery.or(categoriesString);
+
+        if (conditions.length > 0) {
+          dbQuery = dbQuery.or(conditions);
+        } else {
+          dbQuery = dbQuery.or(
+            `title.ilike.%${text}%,description.ilike.%${text}%`
+          );
+        }
       }
 
-      // C. Date Filter logic
-      let dateStart = null;
-      let dateEnd = null;
+      // B. Category Logic
+      if (selectedTags.length > 0) {
+        const orConditions = selectedTags.map(
+          (tag) => `category.ilike.%${tag}%`
+        );
+        dbQuery = dbQuery.or(orConditions.join(","));
+      }
 
-      // Check Time Filters ("This Weekend" etc)
+      // C. Time Filters
+      let earliestStart: Date | null = null;
+      let latestEnd: Date | null = null;
+
       if (activeTimeFilters.length > 0) {
-        const range = getDateRangeForFilter(activeTimeFilters[0]); // ✅ USES THE HELPER HERE
-        if (dateStart) dbQuery = dbQuery.gte("date", dateStart);
-        if (dateEnd) dbQuery = dbQuery.lte("date", dateEnd);
-      }
-      // Check Custom Calendar
-      else if (isCustomDateActive && startDate) {
-        dateStart = startDate;
-        dateEnd = endDate || startDate; // If single day selected
+        activeTimeFilters.forEach((filter) => {
+          const range = getDateRangeForFilter(filter);
+          if (range) {
+            const s = new Date(range.start);
+            const e = new Date(range.end);
+            if (!earliestStart || s < earliestStart) earliestStart = s;
+            if (!latestEnd || e > latestEnd) latestEnd = e;
+          }
+        });
+      } else if (isCustomDateActive && startDate) {
+        earliestStart = new Date(startDate);
+        latestEnd = new Date(endDate || startDate);
+        latestEnd.setHours(23, 59, 59, 999);
       }
 
-      // Apply Date Filters
-      if (dateStart) dbQuery = dbQuery.gte("date", dateStart);
-      if (dateEnd) dbQuery = dbQuery.lte("date", dateEnd);
+      if (earliestStart)
+        dbQuery = dbQuery.gte("date", earliestStart.toISOString());
+      if (latestEnd) dbQuery = dbQuery.lte("date", latestEnd.toISOString());
 
-      // Order by date (soonest first)
       dbQuery = dbQuery.order("date", { ascending: true });
 
       const { data, error } = await dbQuery;
@@ -202,50 +259,55 @@ const SearchScreen = () => {
     }
   }, [
     query,
-    activeFilters,
+    selectedTags,
     activeTimeFilters,
     startDate,
     endDate,
     isCustomDateActive,
   ]);
 
-  // Initial Load
   useEffect(() => {
     fetchEvents();
-  }, []);
+  }, [fetchEvents]);
 
   // --- ACTIONS ---
   const handleSearch = () => {
     Keyboard.dismiss();
     setIsExpanded(false);
-    fetchEvents();
   };
 
   const handleClear = () => {
     setQuery("");
-    setActiveFilters([]);
+    setSelectedTags([]);
     setActiveTimeFilters([]);
     setIsCustomDateActive(false);
     setStartDate(null);
     setEndDate(null);
     setMarkedDates({});
-    // Reset to show all upcoming
-    setTimeout(() => fetchEvents(), 100);
   };
 
-  const toggleFilter = (category: string) => {
-    setActiveFilters((prev) =>
-      prev.includes(category)
-        ? prev.filter((c) => c !== category)
-        : [...prev, category]
-    );
+  const removeQuery = () => {
+    setQuery("");
+  };
+
+  const toggleTag = (tag: string) => {
+    setSelectedTags((prev) => {
+      const newTags = prev.includes(tag)
+        ? prev.filter((t) => t !== tag)
+        : [...prev, tag];
+      return newTags;
+    });
   };
 
   const toggleTimeFilter = (time: string) => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setIsCustomDateActive(false);
-    // Allow only one time filter at a time for simplicity
-    setActiveTimeFilters((prev) => (prev.includes(time) ? [] : [time]));
+    setActiveTimeFilters((prev) => {
+      const newFilters = prev.includes(time)
+        ? prev.filter((t) => t !== time)
+        : [...prev, time];
+      return newFilters;
+    });
   };
 
   const handleCustomDatePress = () => {
@@ -261,61 +323,7 @@ const SearchScreen = () => {
     }
   };
 
-  // --- CALENDAR LOGIC ---
-  const onDayPress = (day: DateData) => {
-    if (!startDate || (startDate && endDate)) {
-      setStartDate(day.dateString);
-      setEndDate(null);
-      setMarkedDates({
-        [day.dateString]: {
-          selected: true,
-          startingDay: true,
-          endingDay: true,
-          color: "#FA8900",
-          textColor: "white",
-        },
-      });
-    } else {
-      const range = getDaysArray(startDate, day.dateString);
-      const newMarked: any = {};
-      range.forEach((date, index) => {
-        newMarked[date] = {
-          selected: true,
-          color: "#FA8900",
-          textColor: "white",
-        };
-      });
-      const d1 = new Date(startDate);
-      const d2 = new Date(day.dateString);
-
-      if (d1 > d2) {
-        setStartDate(day.dateString);
-        setEndDate(startDate);
-      } else {
-        setEndDate(day.dateString);
-      }
-
-      setMarkedDates(newMarked);
-    }
-  };
-
-  const getDaysArray = (start: string, end: string) => {
-    let arr = [];
-    let dt = new Date(start);
-    let edt = new Date(end);
-    if (dt > edt) {
-      const temp = dt;
-      dt = edt;
-      edt = temp;
-    }
-    while (dt <= edt) {
-      arr.push(dt.toISOString().split("T")[0]);
-      dt.setDate(dt.getDate() + 1);
-    }
-    return arr;
-  };
-
-  // --- RENDER ITEMS ---
+  // --- RENDER HELPERS ---
   const FilterBubble = ({
     label,
     color = "#fff",
@@ -325,19 +333,21 @@ const SearchScreen = () => {
     <TouchableOpacity
       onPress={onPress}
       style={{
+        backgroundColor: isSelected ? color : "transparent",
         borderColor: color,
         borderWidth: 1.5,
-        backgroundColor: isSelected ? color : "transparent",
-        marginRight: 12,
-        marginBottom: 14,
+        marginRight: 10,
+        marginBottom: 12,
+        paddingVertical: 12,
+        paddingHorizontal: 22,
+        borderRadius: 999,
       }}
-      className="px-5 py-3 rounded-full"
     >
       <Text
         className="font-bold text-base"
         style={{
           fontFamily: "Jost-Medium",
-          color: isSelected ? "#000" : color,
+          color: isSelected ? "#000" : "#fff",
         }}
       >
         {label}
@@ -385,6 +395,13 @@ const SearchScreen = () => {
     </TouchableOpacity>
   );
 
+  const visibleTags =
+    query.trim().length > 0
+      ? availableTags.filter((tag) =>
+          tag.toLowerCase().includes(query.toLowerCase())
+        )
+      : availableTags;
+
   return (
     <View className="flex-1 bg-[#121212]">
       <LinearGradient {...bannerGradient} style={StyleSheet.absoluteFill} />
@@ -401,7 +418,7 @@ const SearchScreen = () => {
               <View className="flex-row items-center bg-white/10 border border-white/20 rounded-2xl px-2 h-16">
                 <Search color="#FA8900" size={28} className="ml-2 mr-3" />
                 <TextInput
-                  placeholder="Search events..."
+                  placeholder="Start typing..."
                   placeholderTextColor="#999"
                   value={query}
                   onChangeText={(text) => {
@@ -415,7 +432,7 @@ const SearchScreen = () => {
                 />
                 <View className="flex-row items-center gap-2">
                   {(query.length > 0 ||
-                    activeFilters.length > 0 ||
+                    selectedTags.length > 0 ||
                     activeTimeFilters.length > 0 ||
                     isCustomDateActive) && (
                     <TouchableOpacity
@@ -449,23 +466,57 @@ const SearchScreen = () => {
                   contentContainerStyle={{ paddingBottom: 160 }}
                   keyboardShouldPersistTaps="handled"
                 >
-                  <Text className="text-gray-400 text-sm font-bold uppercase mb-4 mt-2 ml-1">
-                    Categories
+                  <Text className="text-gray-400 text-sm font-bold uppercase mb-4 mt-4 ml-1">
+                    Explore Interests
                   </Text>
+
+                  {/* CLOUD */}
                   <View className="flex-row flex-wrap">
-                    {ALL_INTERESTS.map((cat) => (
+                    {/* DYNAMIC MESH BUBBLE */}
+                    {query.length > 0 && (
+                      <TouchableOpacity onPress={handleSearch}>
+                        <LinearGradient
+                          colors={RAINBOW_MESH}
+                          start={{ x: 0, y: 0 }}
+                          end={{ x: 1, y: 1 }}
+                          style={{
+                            borderRadius: 999,
+                            marginRight: 10,
+                            marginBottom: 12,
+                            paddingVertical: 14,
+                            paddingHorizontal: 24,
+                          }}
+                        >
+                          <Text
+                            className="font-bold text-base text-white"
+                            style={{ fontFamily: "Jost-Medium" }}
+                          >
+                            "{query}"
+                          </Text>
+                        </LinearGradient>
+                      </TouchableOpacity>
+                    )}
+
+                    {/* STATIC BUBBLES */}
+                    {visibleTags.map((tag) => (
                       <FilterBubble
-                        key={cat}
-                        label={cat}
-                        color={GET_CATEGORY_COLOR(cat)}
-                        isSelected={activeFilters.includes(cat)}
-                        onPress={() => toggleFilter(cat)}
+                        key={tag}
+                        label={tag}
+                        color={GET_CATEGORY_COLOR(tag)}
+                        isSelected={selectedTags.includes(tag)}
+                        onPress={() => toggleTag(tag)}
                       />
                     ))}
+
+                    {query.length > 0 && visibleTags.length === 0 && (
+                      <Text className="text-gray-500 italic mt-2 ml-2">
+                        No category matches, hit search to find events.
+                      </Text>
+                    )}
                   </View>
 
-                  <Text className="text-gray-400 text-sm font-bold uppercase mb-4 mt-6 ml-1">
-                    Time Period
+                  <Text className="text-gray-400 text-sm font-bold uppercase mb-3 mt-6 ml-1">
+                    When
                   </Text>
                   <View className="flex-row flex-wrap">
                     {TIME_FILTERS.map((time) => (
@@ -479,20 +530,20 @@ const SearchScreen = () => {
                     ))}
                     <TouchableOpacity
                       onPress={handleCustomDatePress}
-                      className={`px-5 py-3 rounded-full mr-3 mb-3 border-2 flex-row items-center ${
+                      className={`px-6 py-3.5 rounded-full mr-3 mb-3 border-[1.5px] flex-row items-center ${
                         isCustomDateActive
                           ? "bg-white border-white"
-                          : "border-gray-600 bg-transparent"
+                          : "border-[#444] bg-transparent"
                       }`}
                     >
                       <CalendarIcon
-                        color={isCustomDateActive ? "black" : "#9ca3af"}
-                        size={18}
-                        className="mx-2"
+                        color={isCustomDateActive ? "black" : "#ccc"}
+                        size={16}
+                        className="mr-2"
                       />
                       <Text
-                        className={`font-bold text-base ml-2 ${
-                          isCustomDateActive ? "text-black" : "text-gray-400"
+                        className={`font-bold text-base ${
+                          isCustomDateActive ? "text-black" : "text-[#ccc]"
                         }`}
                       >
                         {isCustomDateActive && startDate
@@ -504,22 +555,122 @@ const SearchScreen = () => {
                 </ScrollView>
               </View>
             ) : (
+              // RESULT LIST
               <FlatList
                 data={results}
                 keyExtractor={(item) => item.id}
                 numColumns={2}
                 contentContainerStyle={{ paddingBottom: 120, paddingTop: 10 }}
                 ListHeaderComponent={
-                  <Text
-                    className="text-white text-2xl font-bold px-4 mb-4"
-                    style={{ fontFamily: "Jost-Medium" }}
-                  >
-                    {results.length > 0
-                      ? query
-                        ? `Results for "${query}"`
-                        : "Upcoming Events"
-                      : ""}
-                  </Text>
+                  <View className="px-4 mb-4">
+                    <Text
+                      className="text-white text-2xl font-bold mb-3"
+                      style={{ fontFamily: "Jost-Medium" }}
+                    >
+                      {results.length > 0 ? "Upcoming Events" : ""}
+                    </Text>
+
+                    {/* ✅ INTERACTIVE FILTER BUBBLES */}
+                    <View className="flex-row flex-wrap">
+                      {/* 1. QUERY BUBBLE */}
+                      {query.length > 0 && (
+                        <TouchableOpacity
+                          onPress={removeQuery}
+                          activeOpacity={0.8}
+                        >
+                          <LinearGradient
+                            colors={RAINBOW_MESH}
+                            start={{ x: 0, y: 0 }}
+                            end={{ x: 1, y: 1 }}
+                            style={{
+                              borderRadius: 999,
+                              paddingHorizontal: 20,
+                              paddingVertical: 10,
+                              marginRight: 8,
+                              marginBottom: 8,
+                              flexDirection: "row",
+                              alignItems: "center",
+                            }}
+                          >
+                            <Text
+                              className="text-white text-base font-bold mr-2"
+                              style={{ fontFamily: "Jost-Medium" }}
+                            >
+                              "{query}"
+                            </Text>
+                            <View className="bg-white/30 rounded-full p-0.5">
+                              <X size={14} color="white" strokeWidth={3} />
+                            </View>
+                          </LinearGradient>
+                        </TouchableOpacity>
+                      )}
+
+                      {/* 2. CATEGORY BUBBLES */}
+                      {selectedTags.map((tag) => {
+                        const color = GET_CATEGORY_COLOR(tag);
+                        return (
+                          <TouchableOpacity
+                            key={tag}
+                            onPress={() => toggleTag(tag)}
+                            style={{
+                              borderColor: color,
+                              borderWidth: 1.5,
+                              backgroundColor: "rgba(0,0,0,0.4)",
+                            }}
+                            className="px-5 py-2.5 rounded-full mr-2 mb-2 flex-row items-center"
+                          >
+                            <Text
+                              style={{
+                                color: color,
+                                fontFamily: "Jost-Medium",
+                              }}
+                              className="text-base font-bold mr-2"
+                            >
+                              {tag}
+                            </Text>
+                            <X size={16} color={color} strokeWidth={2.5} />
+                          </TouchableOpacity>
+                        );
+                      })}
+
+                      {/* 3. TIME BUBBLES */}
+                      {activeTimeFilters.map((time) => (
+                        <TouchableOpacity
+                          key={time}
+                          onPress={() => toggleTimeFilter(time)}
+                          className="border border-white/80 bg-black/40 px-5 py-2.5 rounded-full mr-2 mb-2 flex-row items-center"
+                        >
+                          <Text
+                            style={{ fontFamily: "Jost-Medium" }}
+                            className="text-white text-base font-bold mr-2"
+                          >
+                            {time}
+                          </Text>
+                          <X size={16} color="white" strokeWidth={2.5} />
+                        </TouchableOpacity>
+                      ))}
+
+                      {/* 4. Custom Date Bubble */}
+                      {isCustomDateActive && startDate && (
+                        <TouchableOpacity
+                          onPress={() => {
+                            setIsCustomDateActive(false);
+                            setStartDate(null);
+                            setEndDate(null);
+                          }}
+                          className="border border-white/80 bg-black/40 px-5 py-2.5 rounded-full mr-2 mb-2 flex-row items-center"
+                        >
+                          <Text
+                            style={{ fontFamily: "Jost-Medium" }}
+                            className="text-white text-base font-bold mr-2"
+                          >
+                            Custom Date
+                          </Text>
+                          <X size={16} color="white" strokeWidth={2.5} />
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  </View>
                 }
                 ListEmptyComponent={
                   !loading ? (
@@ -559,7 +710,44 @@ const SearchScreen = () => {
             <CalendarList
               markingType={"period"}
               markedDates={markedDates}
-              onDayPress={onDayPress}
+              onDayPress={(day: any) => {
+                if (!startDate || (startDate && endDate)) {
+                  setStartDate(day.dateString);
+                  setEndDate(null);
+                  setMarkedDates({
+                    [day.dateString]: {
+                      selected: true,
+                      startingDay: true,
+                      endingDay: true,
+                      color: "#FA8900",
+                      textColor: "white",
+                    },
+                  });
+                } else {
+                  let d1 = new Date(startDate);
+                  let d2 = new Date(day.dateString);
+                  if (d1 > d2) {
+                    setEndDate(startDate);
+                    setStartDate(day.dateString);
+                  } else {
+                    setEndDate(day.dateString);
+                  }
+                  setMarkedDates({
+                    [startDate]: {
+                      selected: true,
+                      startingDay: true,
+                      color: "#FA8900",
+                      textColor: "white",
+                    },
+                    [day.dateString]: {
+                      selected: true,
+                      endingDay: true,
+                      color: "#FA8900",
+                      textColor: "white",
+                    },
+                  });
+                }
+              }}
               theme={{
                 backgroundColor: "#1E1E1E",
                 calendarBackground: "#1E1E1E",
@@ -572,8 +760,6 @@ const SearchScreen = () => {
                 dotColor: "#FA8900",
                 selectedDotColor: "#ffffff",
                 arrowColor: "#FA8900",
-                // monthTextColor: "white",
-                indicatorColor: "white",
                 textDayFontFamily: "Jost-Medium",
                 textMonthFontFamily: "Jost-Medium",
                 textDayHeaderFontFamily: "Jost-Medium",
@@ -586,7 +772,6 @@ const SearchScreen = () => {
             <TouchableOpacity
               onPress={() => {
                 setShowCalendar(false);
-                fetchEvents();
               }}
               className="w-full mt-4 mb-6 shadow-lg shadow-orange-500/30"
             >
@@ -618,8 +803,8 @@ const SearchScreen = () => {
             >
               <X color="white" size={32} />
             </TouchableOpacity>
-
             <View className="w-full items-center">
+              {/* ✅ FIX: Enable tap & connect logic directly to card */}
               <EventFeedCard
                 id={selectedEvent.id}
                 title={selectedEvent.title}
@@ -628,7 +813,8 @@ const SearchScreen = () => {
                 image={selectedEvent.banner_url}
                 attendeesCount={100}
                 showSocial={false}
-                disableTap={true}
+                // Enable interaction
+                disableTap={false}
                 onOpenSocial={() => {}}
                 onPressHost={() => {
                   setSelectedEvent(null);
@@ -636,40 +822,22 @@ const SearchScreen = () => {
                     hostId: selectedEvent.host_id,
                   });
                 }}
-                onViewEvent={() => {}}
-                // Added empty handler to prevent error if it's required
+                // Navigate on Click
+                onViewEvent={() => {
+                  setSelectedEvent(null);
+                  navigation.navigate("EventProfile", {
+                    eventId: selectedEvent.id,
+                    eventTitle: selectedEvent.title,
+                  });
+                }}
                 onOpenDiscussion={() => {}}
               />
-              <View className="w-full px-6 mt-6">
-                <TouchableOpacity
-                  onPress={() => {
-                    setSelectedEvent(null);
-                    navigation.navigate("EventProfile", {
-                      eventId: selectedEvent.id,
-                      eventTitle: selectedEvent.title,
-                    });
-                  }}
-                  activeOpacity={0.9}
-                  className="w-full shadow-lg shadow-orange-500/30"
-                >
-                  <LinearGradient
-                    {...fireGradient}
-                    className="w-full py-5 rounded-full items-center justify-center"
-                  >
-                    <Text
-                      className="text-white text-2xl font-bold tracking-wide"
-                      style={{ fontFamily: "Jost-Medium" }}
-                    >
-                      VIEW EVENT
-                    </Text>
-                  </LinearGradient>
-                </TouchableOpacity>
-              </View>
+
+              {/* Removed Duplicate Button Here */}
             </View>
           </View>
         )}
       </Modal>
-
       <BottomNav />
     </View>
   );
