@@ -1,3 +1,4 @@
+// app/components/EventFeedCard.tsx
 import React, { useState, useCallback, useEffect } from "react";
 import {
   View,
@@ -27,7 +28,14 @@ import Animated, {
   withDelay,
   withTiming,
 } from "react-native-reanimated";
-import { Video, ResizeMode, Audio } from "expo-av"; // ✅ Import Audio
+// ✅ IMPORT INTERRUPTION MODES
+import {
+  Video,
+  ResizeMode,
+  Audio,
+  InterruptionModeIOS,
+  InterruptionModeAndroid,
+} from "expo-av";
 import { fireGradient } from "../styles/colours";
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("screen");
@@ -49,15 +57,11 @@ type EventFeedCardProps = {
   minPrice?: string;
 };
 
-// --- HELPER: Normalize Source ---
 const getSource = (source: any) => {
-  if (typeof source === "string") {
-    return { uri: source };
-  }
+  if (typeof source === "string") return { uri: source };
   return source;
 };
 
-// --- HELPER: Check Video Type ---
 const isVideoFile = (source: any) => {
   const uri = typeof source === "string" ? source : source?.uri;
   if (uri) {
@@ -89,21 +93,21 @@ const EventFeedCard = ({
   const carouselData =
     mediaItems && mediaItems.length > 0 ? mediaItems : [image];
 
-  // Animation Values
   const scale = useSharedValue(0);
   const opacity = useSharedValue(0);
 
-  // Full Screen State
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [isMuted, setIsMuted] = useState(false); // Default: Sound ON in full screen
+  const [isMuted, setIsMuted] = useState(false);
 
-  // ✅ ENABLE AUDIO IN SILENT MODE
+  // ✅ AUDIO FIX FOR EVENTS
   useEffect(() => {
     const enableAudio = async () => {
       try {
         await Audio.setAudioModeAsync({
-          playsInSilentModeIOS: true, // Key fix for iOS
+          playsInSilentModeIOS: true,
           staysActiveInBackground: false,
+          interruptionModeIOS: InterruptionModeIOS.MixWithOthers, // Mix!
+          interruptionModeAndroid: InterruptionModeAndroid.DuckOthers,
           shouldDuckAndroid: true,
         });
       } catch (e) {
@@ -137,7 +141,6 @@ const EventFeedCard = ({
 
   const viewabilityConfig = { itemVisiblePercentThreshold: 50 };
 
-  // --- RENDER FULL SCREEN ITEM ---
   const renderFullScreenItem = ({
     item,
     index,
@@ -166,7 +169,7 @@ const EventFeedCard = ({
             resizeMode={ResizeMode.CONTAIN}
             shouldPlay={isActive}
             isLooping={true}
-            isMuted={isMuted} // ✅ Controlled by state
+            isMuted={isMuted}
             useNativeControls={false}
           />
         ) : (
@@ -180,7 +183,6 @@ const EventFeedCard = ({
     );
   };
 
-  // --- MAIN FEED RENDER ---
   const mainSource = getSource(carouselData[0]);
   const isMainVideo = isVideoFile(carouselData[0]);
 
@@ -201,7 +203,7 @@ const EventFeedCard = ({
               resizeMode={ResizeMode.COVER}
               shouldPlay={true}
               isLooping={true}
-              isMuted={true} // Always muted on main feed
+              isMuted={true}
             />
           ) : (
             <Image
@@ -226,7 +228,7 @@ const EventFeedCard = ({
             "rgba(0,0,0,0.95)",
           ]}
           className="absolute bottom-0 left-0 right-0 px-5 pb-6 pt-32 justify-end z-20"
-          pointerEvents="box-none"
+          pointerEvents="box-none" // ✅ Keeps gradient from blocking taps
         >
           <View>
             <Text
@@ -313,7 +315,6 @@ const EventFeedCard = ({
         )}
       </View>
 
-      {/* --- FULL SCREEN MODAL --- */}
       <Modal
         visible={isFullScreen}
         animationType="fade"
@@ -322,15 +323,12 @@ const EventFeedCard = ({
       >
         <View className="flex-1 bg-black">
           <StatusBar hidden />
-
           <TouchableOpacity
             onPress={() => setIsFullScreen(false)}
             className="absolute top-12 right-6 z-50 bg-black/50 p-2 rounded-full"
           >
             <X color="white" size={28} />
           </TouchableOpacity>
-
-          {/* ✅ SOUND TOGGLE BUTTON */}
           <TouchableOpacity
             onPress={() => setIsMuted(!isMuted)}
             className="absolute top-12 left-6 z-50 bg-black/50 p-2 rounded-full"
@@ -341,7 +339,6 @@ const EventFeedCard = ({
               <Volume2 color="white" size={24} />
             )}
           </TouchableOpacity>
-
           <FlatList
             data={carouselData}
             keyExtractor={(_, index) => index.toString()}
@@ -353,20 +350,6 @@ const EventFeedCard = ({
             viewabilityConfig={viewabilityConfig}
             className="flex-1"
           />
-
-          {carouselData.length > 1 && (
-            <View className="absolute bottom-32 left-0 right-0 flex-row justify-center gap-2">
-              {carouselData.map((_, i) => (
-                <View
-                  key={i}
-                  className={`h-2 rounded-full ${
-                    i === currentIndex ? "w-6 bg-white" : "w-2 bg-white/30"
-                  }`}
-                />
-              ))}
-            </View>
-          )}
-
           <View className="absolute bottom-10 left-6 right-6">
             <TouchableOpacity
               onPress={() => {

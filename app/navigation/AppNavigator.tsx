@@ -21,6 +21,7 @@ import FriendsSocialCircleScreen from "../screens/FriendsSocialCircleScreen";
 import PurchaseTicketScreen from "../screens/PurchaseTicketScreen";
 import VenueProfileScreen from "../screens/VenueProfileScreen";
 import VenueReviewsScreen from "../screens/VenueReviewsScreen";
+
 import EventDiscussionScreen from "../screens/EventDiscussionScreen";
 
 // Settings screens
@@ -41,6 +42,7 @@ import TicketsPaymentsSettings from "../screens/SettingScreens/TicketsPaymentsSe
 import DataSyncSettings from "../screens/SettingScreens/DataSyncSettings";
 import SupportFeedbackSettings from "../screens/SettingScreens/SupportFeedbackSettings";
 import FindFriendsScreen from "../screens/SettingScreens/FindFriendsScreen";
+import EventCommunityScreen from "../screens/EventCommunityScreen";
 
 import type { RootStackParamList } from "../types/types";
 
@@ -96,12 +98,17 @@ export default function AppNavigator() {
         <Stack.Screen name="EventProfile" component={EventProfileScreen} />
         <Stack.Screen name="TicketDisplay" component={TicketDisplayScreen} />
         <Stack.Screen
+          name="EventCommunity"
+          component={EventCommunityScreen} // ✅ Points to the new file
+        />
+
+        <Stack.Screen
           name="EventHostProfile"
           component={EventHostProfileScreen}
         />
         <Stack.Screen name="VenueProfile" component={VenueProfileScreen} />
         <Stack.Screen name="PurchaseTicket" component={PurchaseTicketScreen} />
-        <Stack.Screen name="VenueReviews" component={VenueReviewsScreen} />
+
         <Stack.Screen
           name="EventDiscussion"
           component={EventDiscussionScreen}

@@ -1,4 +1,5 @@
-import React, { useState } from "react";
+// app/screens/PostContentScreen.tsx
+import React, { useState, useEffect, useCallback } from "react";
 import {
   View,
   Text,
@@ -7,15 +8,24 @@ import {
   StyleSheet,
   ScrollView,
   Image,
-  Switch,
   Alert,
   ActivityIndicator,
+  RefreshControl,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { useNavigation, useRoute, RouteProp } from "@react-navigation/native";
-import { ArrowLeft, ImagePlus, Send, Bell, X } from "lucide-react-native";
+import {
+  ArrowLeft,
+  ImagePlus,
+  Send,
+  X,
+  Video as VideoIcon,
+  Trash2,
+  Clock,
+} from "lucide-react-native";
 import * as ImagePicker from "expo-image-picker";
+import { Video, ResizeMode } from "expo-av";
 
 // Backend
 import { supabase } from "../../lib/supabase";
@@ -33,39 +43,77 @@ const PostContentScreen = () => {
   const route = useRoute<PostContentRouteProp>();
   const { eventId } = route.params || { eventId: "1" };
 
+  // Form State
   const [caption, setCaption] = useState("");
-  const [imageUri, setImageUri] = useState<string | null>(null);
-  const [sendNotification, setSendNotification] = useState(true);
+  const [media, setMedia] = useState<{
+    uri: string;
+    type: "image" | "video";
+  } | null>(null);
   const [loading, setLoading] = useState(false);
 
-  // 1. PICK & COMPRESS IMAGE
-  const handlePickImage = async () => {
+  // History State
+  const [previousPosts, setPreviousPosts] = useState<any[]>([]);
+  const [refreshing, setRefreshing] = useState(false);
+
+  // --- 1. FETCH HISTORY ---
+  const fetchPosts = useCallback(async () => {
+    try {
+      const { data, error } = await supabase
+        .from("event_updates")
+        .select("*")
+        .eq("event_id", eventId)
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+      setPreviousPosts(data || []);
+    } catch (err) {
+      console.log("Error fetching posts:", err);
+    }
+  }, [eventId]);
+
+  useEffect(() => {
+    fetchPosts();
+  }, [fetchPosts]);
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await fetchPosts();
+    setRefreshing(false);
+  };
+
+  // --- 2. MEDIA HANDLERS ---
+  const handlePickMedia = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== "granted") {
-      Alert.alert("Permission needed", "Please allow access to photos.");
+      Alert.alert("Permission needed", "Please allow access to media library.");
       return;
     }
 
     let result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: ImagePicker.MediaTypeOptions.All,
       allowsEditing: true,
       aspect: [4, 5],
-      quality: 0.5, // ⚡️ PERFORMANCE: Compress image to 50% quality
+      quality: 0.5,
+      videoMaxDuration: 60,
     });
 
     if (!result.canceled) {
-      setImageUri(result.assets[0].uri);
+      const asset = result.assets[0];
+      setMedia({
+        uri: asset.uri,
+        type: asset.type === "video" ? "video" : "image",
+      });
     }
   };
 
-  const handleRemoveImage = () => {
-    setImageUri(null);
+  const handleRemoveMedia = () => {
+    setMedia(null);
   };
 
-  // 2. POST UPDATE
+  // --- 3. POST ACTION ---
   const handlePost = async () => {
-    if (!caption && !imageUri) {
-      Alert.alert("Empty Post", "Please add an image or a caption.");
+    if (!caption && !media) {
+      Alert.alert("Empty Post", "Please add an image/video or a caption.");
       return;
     }
 
@@ -74,29 +122,61 @@ const PostContentScreen = () => {
     try {
       let uploadedUrl = null;
 
-      // Upload if exists
-      if (imageUri) {
-        uploadedUrl = await uploadImage(imageUri, "event-updates");
+      if (media) {
+        uploadedUrl = await uploadImage(media.uri, "event-updates");
       }
 
-      // Insert Row
       const { error } = await supabase.from("event_updates").insert({
         event_id: eventId,
         caption: caption,
         image_url: uploadedUrl,
-        send_notification: sendNotification,
       });
 
       if (error) throw error;
 
-      Alert.alert("Success", "Update posted successfully!", [
-        { text: "OK", onPress: () => navigation.goBack() },
-      ]);
+      Alert.alert("Success", "Update posted!");
+      setCaption("");
+      setMedia(null);
+      fetchPosts(); // Refresh list immediately
     } catch (error: any) {
       Alert.alert("Error", error.message);
     } finally {
       setLoading(false);
     }
+  };
+
+  // --- 4. DELETE ACTION ---
+  const handleDeletePost = (post: any) => {
+    // ✅ Pass full post object, not just ID
+    Alert.alert("Delete Update", "Are you sure? This cannot be undone.", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: async () => {
+          // 1. Delete File from Storage (if it exists)
+          if (post.image_url) {
+            // Extract path: "https://.../event-updates/filename.jpg" -> "filename.jpg"
+            const path = post.image_url.split("event-updates/").pop();
+            if (path) {
+              await supabase.storage.from("event-updates").remove([path]);
+            }
+          }
+
+          // 2. Delete Row from DB
+          const { error } = await supabase
+            .from("event_updates")
+            .delete()
+            .eq("id", post.id);
+
+          if (error) {
+            Alert.alert("Error", error.message);
+          } else {
+            fetchPosts(); // Refresh list
+          }
+        },
+      },
+    ]);
   };
 
   return (
@@ -108,8 +188,16 @@ const PostContentScreen = () => {
       <SafeAreaView className="flex-1" edges={["left", "right"]}>
         <ScrollView
           className="flex-1 px-6"
-          contentContainerStyle={{ paddingTop: 120, paddingBottom: 140 }}
+          contentContainerStyle={{ paddingTop: 120, paddingBottom: 100 }}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor="#D087FF"
+            />
+          }
         >
+          {/* HEADER */}
           <View className="flex-row items-center mb-8">
             <TouchableOpacity
               onPress={() => navigation.goBack()}
@@ -130,42 +218,63 @@ const PostContentScreen = () => {
             </View>
           </View>
 
-          {imageUri ? (
-            <View className="mb-6 relative rounded-2xl overflow-hidden shadow-lg shadow-purple-900/40">
-              <Image
-                source={{ uri: imageUri }}
-                className="w-full h-64"
-                resizeMode="cover"
-              />
+          {/* CREATE POST SECTION */}
+          {media ? (
+            <View className="mb-6 relative rounded-2xl overflow-hidden shadow-lg shadow-purple-900/40 bg-black">
+              {media.type === "video" ? (
+                <Video
+                  source={{ uri: media.uri }}
+                  style={{ width: "100%", height: 300 }}
+                  resizeMode={ResizeMode.COVER}
+                  shouldPlay
+                  isLooping
+                  // isMuted removed so you can hear preview
+                />
+              ) : (
+                <Image
+                  source={{ uri: media.uri }}
+                  className="w-full h-72"
+                  resizeMode="cover"
+                />
+              )}
+
               <TouchableOpacity
-                onPress={handleRemoveImage}
+                onPress={handleRemoveMedia}
                 className="absolute top-3 right-3 bg-black/60 p-2 rounded-full border border-white/20"
               >
                 <X color="white" size={20} />
               </TouchableOpacity>
-              <View className="absolute bottom-3 left-3 bg-purple-600/90 px-3 py-1 rounded-md">
-                <Text className="text-white text-xs font-bold">
-                  MEDIA ATTACHED
+
+              <View className="absolute bottom-3 left-3 bg-purple-600/90 px-3 py-1 rounded-md flex-row items-center">
+                {media.type === "video" ? (
+                  <VideoIcon size={12} color="white" className="mr-1" />
+                ) : (
+                  <ImagePlus size={12} color="white" className="mr-1" />
+                )}
+                <Text className="text-white text-xs font-bold uppercase">
+                  {media.type === "video" ? "VIDEO ATTACHED" : "IMAGE ATTACHED"}
                 </Text>
               </View>
             </View>
           ) : (
             <TouchableOpacity
-              onPress={handlePickImage}
+              onPress={handlePickMedia}
               activeOpacity={0.8}
               className="w-full h-48 bg-white/5 border-2 border-dashed border-white/20 rounded-2xl items-center justify-center mb-6"
             >
               <View className="bg-purple-500/20 p-4 rounded-full mb-2">
                 <ImagePlus color="#D087FF" size={32} />
               </View>
-              <Text className="text-gray-400 font-medium">Add a Photo</Text>
+              <Text className="text-gray-400 font-medium">
+                Add Photo or Video
+              </Text>
             </TouchableOpacity>
           )}
 
           <Text className="text-white text-lg font-bold mb-3">Caption</Text>
-          <View className="bg-white/5 border border-white/10 rounded-2xl px-4 py-3 mb-6 h-40">
+          <View className="bg-white/5 border border-white/10 rounded-2xl px-4 py-3 mb-6 h-32">
             <TextInput
-              placeholder="What's new? (e.g. Set times released!)"
+              placeholder="What's the hype? (e.g. Backstage sneak peek!)"
               placeholderTextColor="#6b7280"
               value={caption}
               onChangeText={setCaption}
@@ -176,33 +285,10 @@ const PostContentScreen = () => {
             />
           </View>
 
-          <View className="bg-purple-500/10 border border-purple-500/30 rounded-2xl p-4 flex-row items-center justify-between mb-8">
-            <View className="flex-row items-center flex-1 mr-4">
-              <View className="bg-purple-500/20 p-3 rounded-full mr-3">
-                <Bell color="#D087FF" size={24} />
-              </View>
-              <View className="flex-1">
-                <Text className="text-white font-bold text-lg">
-                  Notify Attendees
-                </Text>
-                <Text className="text-gray-400 text-xs leading-4">
-                  Sends a push notification to attendees.
-                </Text>
-              </View>
-            </View>
-            <Switch
-              value={sendNotification}
-              onValueChange={setSendNotification}
-              trackColor={{ false: "#333", true: "#D087FF" }}
-              thumbColor={"#fff"}
-            />
-          </View>
-        </ScrollView>
-
-        <View className="absolute bottom-0 left-0 right-0 p-6 bg-[#121212]/90 border-t border-white/10">
+          {/* POST BUTTON */}
           <TouchableOpacity
             activeOpacity={0.8}
-            className="w-full shadow-lg shadow-purple-500/30"
+            className="w-full shadow-lg shadow-purple-500/30 mb-12"
             onPress={handlePost}
             disabled={loading}
           >
@@ -225,7 +311,71 @@ const PostContentScreen = () => {
               )}
             </LinearGradient>
           </TouchableOpacity>
-        </View>
+
+          {/* --- HISTORY SECTION --- */}
+          <Text className="text-white text-xl font-bold mb-4 border-t border-white/10 pt-6">
+            Previous Updates
+          </Text>
+
+          {previousPosts.length === 0 ? (
+            <Text className="text-gray-500 italic text-center py-4">
+              No updates posted yet.
+            </Text>
+          ) : (
+            previousPosts.map((post) => (
+              <View
+                key={post.id}
+                className="bg-white/5 border border-white/5 rounded-2xl p-3 mb-3 flex-row items-center"
+              >
+                {/* Thumbnail */}
+                <View className="w-16 h-16 bg-black/30 rounded-xl overflow-hidden mr-4 border border-white/10">
+                  {post.image_url ? (
+                    post.image_url.includes(".mp4") ||
+                    post.image_url.includes(".mov") ? (
+                      <View className="flex-1 items-center justify-center bg-gray-800">
+                        <VideoIcon color="white" size={20} />
+                      </View>
+                    ) : (
+                      <Image
+                        source={{ uri: post.image_url }}
+                        className="w-full h-full"
+                        resizeMode="cover"
+                      />
+                    )
+                  ) : (
+                    <View className="flex-1 items-center justify-center">
+                      <ImagePlus color="#666" size={20} />
+                    </View>
+                  )}
+                </View>
+
+                {/* Info */}
+                <View className="flex-1 pr-2">
+                  <Text
+                    className="text-white font-bold text-base mb-1"
+                    numberOfLines={1}
+                  >
+                    {post.caption || "No Caption"}
+                  </Text>
+                  <View className="flex-row items-center">
+                    <Clock size={12} color="#888" className="mr-1" />
+                    <Text className="text-gray-400 text-xs">
+                      {new Date(post.created_at).toLocaleDateString()}
+                    </Text>
+                  </View>
+                </View>
+
+                {/* Delete Button */}
+                <TouchableOpacity
+                  onPress={() => handleDeletePost(post)}
+                  className="bg-red-500/10 p-3 rounded-full"
+                >
+                  <Trash2 color="#ef4444" size={20} />
+                </TouchableOpacity>
+              </View>
+            ))
+          )}
+        </ScrollView>
       </SafeAreaView>
     </View>
   );

@@ -454,9 +454,9 @@ const EventProfileScreen = () => {
             <View className="border-t border-white/10 pt-4 mt-1">
               <TouchableOpacity
                 onPress={() =>
-                  navigation.navigate("EventDiscussion", {
+                  navigation.navigate("EventCommunity", {
                     eventId: eventId!,
-                    eventName: eventName,
+                    eventTitle: eventName,
                   })
                 }
                 className="flex-row items-center justify-between"

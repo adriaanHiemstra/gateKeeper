@@ -88,6 +88,7 @@ export type RootStackParamList = {
   HostSecurity: undefined;
   HostSupport: undefined;
   GuestList: undefined;
-  TeamAccess: undefined;
+  TeamAccess: { eventId: string };
   PromoteEvent: { eventId: string };
+  EventCommunity: { eventId: string; eventTitle: string };
 };

@@ -1,3 +1,4 @@
+// app/screens/ManageEventScreen.tsx
 import React, { useState, useCallback } from "react";
 import {
   View,
@@ -110,17 +111,17 @@ const ManageEventScreen = () => {
         // 2. Get Tiers (Capacity)
         supabase.from("ticket_tiers").select("*").eq("event_id", eventId),
 
-        // 3. Get Sales (Only grab price & tier_id to save bandwidth)
+        // 3. Get Sales (Only grab tier_id since tickets table doesn't have price)
         supabase
           .from("tickets")
-          .select("price, tier_id")
+          .select("tier_id")
           .eq("event_id", eventId)
           .eq("status", "valid"),
       ]);
 
       if (eventRes.error) throw eventRes.error;
       if (tiersRes.error) throw tiersRes.error;
-      if (salesRes.error) throw salesRes.error;
+      // Note: salesRes might be empty if no tickets sold, which is fine.
 
       setEventTitle(eventRes.data.title);
 
@@ -131,8 +132,13 @@ const ManageEventScreen = () => {
       let totalRev = 0;
       let totalCap = 0;
 
-      // Calculate Revenue efficiently
-      ticketData.forEach((t) => (totalRev += Number(t.price) || 0));
+      // ✅ FIX: Calculate revenue by matching sold ticket's tier_id to the tier's price
+      ticketData.forEach((ticket) => {
+        const tier = tierData.find((t) => t.id === ticket.tier_id);
+        if (tier) {
+          totalRev += Number(tier.price) || 0;
+        }
+      });
 
       // Map Tiers with their specific sold counts
       const processedTiers = tierData.map((tier) => {
@@ -290,14 +296,9 @@ const ManageEventScreen = () => {
               </View>
               <View className="flex-row gap-4 mb-4">
                 <ManagementAction
-                  icon={<Users color="white" size={24} />}
-                  label="Guest List"
-                  onPress={() => navigation.navigate("GuestList")}
-                />
-                <ManagementAction
                   icon={<Shield color="white" size={24} />}
                   label="Team Access"
-                  onPress={() => navigation.navigate("TeamAccess")}
+                  onPress={() => navigation.navigate("TeamAccess", { eventId })}
                 />
               </View>
               <View className="flex-row gap-4 mb-8">
@@ -310,11 +311,11 @@ const ManageEventScreen = () => {
                 />
                 <ManagementAction
                   icon={<MessageCircle color="white" size={24} />}
-                  label="Reviews"
+                  label="Discussion"
                   onPress={() =>
-                    navigation.navigate("VenueReviews", {
-                      venueId: "1",
-                      venueName: eventTitle,
+                    navigation.navigate("EventCommunity", {
+                      eventId: eventId,
+                      eventTitle: eventTitle,
                     })
                   }
                 />

@@ -32,6 +32,7 @@ import { RootStackParamList } from "../types/types";
 
 // Components
 import EventFeedCard from "../components/EventFeedCard";
+import PostFeedCard from "../components/PostFeedCard";
 import BottomNav from "../components/BottomNav";
 import TopBanner from "../components/TopBanner";
 
@@ -41,44 +42,76 @@ import { bannerGradient } from "../styles/colours";
 const { width } = Dimensions.get("window");
 const HEADER_HEIGHT = 100;
 const PANEL_WIDTH = width * 0.85;
-const SNAP_INTERVAL = width * 1.6 + 8; // Card Height + Margin
+const SNAP_INTERVAL = width * 1.6 + 8;
 
 const HomeScreen = () => {
   const navigation =
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
 
-  const [events, setEvents] = useState<any[]>([]);
+  const [feedData, setFeedData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   const [isPanelOpen, setIsPanelOpen] = useState(false);
   const [selectedFriends, setSelectedFriends] = useState<any[]>([]);
   const [selectedEventTitle, setSelectedEventTitle] = useState("");
 
-  // ✅ FETCH LATEST DATA EVERY TIME SCREEN IS FOCUSED
   useFocusEffect(
     useCallback(() => {
-      fetchEvents();
+      fetchFeed();
     }, [])
   );
 
-  const fetchEvents = async () => {
+  const fetchFeed = async () => {
     try {
-      const { data, error } = await supabase
+      const today = new Date().toISOString();
+
+      // 1. Fetch Events
+      const { data: eventsData } = await supabase
         .from("events")
         .select(
           `
           *,
-          profiles:host_id (
-            username,
-            avatar_url
-          ),
+          profiles:host_id ( username, avatar_url ),
           ticket_tiers (*) 
         `
         )
-        .order("date", { ascending: true });
+        .gte("date", today)
+        .order("date", { ascending: true })
+        .limit(20);
 
-      if (error) throw error;
-      setEvents(data || []);
+      // 2. Fetch Updates
+      // Note: We perform a nested join to get Event info.
+      // Getting Host Profile via Event is deep, so we'll settle for Event Info for now.
+      const { data: updatesData } = await supabase
+        .from("event_updates")
+        .select(
+          `
+            *,
+            events ( title, id )
+        `
+        )
+        .order("created_at", { ascending: false })
+        .limit(20);
+
+      // 3. Format & Merge
+      const formattedEvents = (eventsData || []).map((e) => ({
+        ...e,
+        type: "event",
+        sortTime: new Date(e.created_at).getTime(),
+      }));
+
+      const formattedUpdates = (updatesData || []).map((u) => ({
+        ...u,
+        type: "post",
+        sortTime: new Date(u.created_at).getTime(),
+      }));
+
+      // 4. Combine and Sort
+      const combined = [...formattedEvents, ...formattedUpdates].sort(
+        (a, b) => b.sortTime - a.sortTime
+      );
+
+      setFeedData(combined);
     } catch (error: any) {
       console.log("Fetch Error:", error.message);
     } finally {
@@ -86,6 +119,43 @@ const HomeScreen = () => {
     }
   };
 
+  // --- NAVIGATION HELPER ---
+  // ✅ FIX: Handles both Full Objects and Partial Data by using placeholders
+  const goToEventProfile = (data: any, isPartial: boolean = false) => {
+    if (isPartial) {
+      // Logic for POSTS (where we might lack full details)
+      navigation.navigate("EventProfile", {
+        eventId: data.event_id || data.id,
+        // 👇 Placeholders satisfy the Type Checker; Profile Screen will fetch real data.
+        eventName: data.events?.title || "Loading...",
+        attendees: 0,
+        logo: require("../assets/profile-pic-1.png"),
+        banner: require("../assets/event-placeholder.png"),
+      });
+    } else {
+      // Logic for EVENT CARDS (where we have full details)
+      navigation.navigate("EventProfile", {
+        eventId: data.id,
+        eventName: data.title,
+        attendees: 120, // Or calculate from tickets
+        logo: data.profiles?.avatar_url
+          ? { uri: data.profiles.avatar_url }
+          : require("../assets/profile-pic-1.png"),
+        banner: data.banner_url
+          ? { uri: data.banner_url }
+          : require("../assets/event-placeholder.png"),
+        images: data.images || [],
+        time: new Date(data.date).toLocaleDateString(),
+        location: data.location_text,
+        description: data.description,
+        ticketUrl: data.ticket_url,
+        tags: data.tags || [],
+        ticket_tiers: data.ticket_tiers || [],
+      });
+    }
+  };
+
+  // --- ANIMATIONS ---
   const translateY = useSharedValue(0);
   const lastContentOffset = useSharedValue(0);
   const isHidden = useSharedValue(false);
@@ -94,7 +164,6 @@ const HomeScreen = () => {
     onScroll: (event) => {
       const currentY = event.contentOffset.y;
       const diff = currentY - lastContentOffset.value;
-
       if (diff > 5 && currentY > 50 && !isHidden.value) {
         isHidden.value = true;
         translateY.value = withTiming(-HEADER_HEIGHT, {
@@ -140,31 +209,9 @@ const HomeScreen = () => {
     transform: [{ translateX: panelTranslateX.value }],
   }));
 
-  const goToEventProfile = (item: any) => {
-    navigation.navigate("EventProfile", {
-      eventId: item.id, // Pass ID so profile can fetch fresh data
-      eventName: item.title,
-      attendees: 120,
-      logo: item.profiles?.avatar_url
-        ? { uri: item.profiles.avatar_url }
-        : require("../assets/profile-pic-1.png"),
-      banner: item.banner_url
-        ? { uri: item.banner_url }
-        : require("../assets/event-placeholder.png"),
-      images: item.images || [],
-      time: new Date(item.date).toLocaleDateString(),
-      location: item.location_text,
-      description: item.description,
-      ticketUrl: item.ticket_url,
-      tags: item.tags || [],
-      ticket_tiers: item.ticket_tiers || [],
-    });
-  };
-
   return (
     <View className="flex-1 bg-[#121212]">
       <LinearGradient {...bannerGradient} style={StyleSheet.absoluteFill} />
-
       <TopBanner style={headerAnimatedStyle} />
 
       <SafeAreaView className="flex-1" edges={["left", "right"]}>
@@ -174,8 +221,8 @@ const HomeScreen = () => {
           </View>
         ) : (
           <Animated.FlatList
-            data={events}
-            keyExtractor={(item) => item.id}
+            data={feedData}
+            keyExtractor={(item) => item.id + item.type}
             contentContainerStyle={{ paddingTop: 100, paddingBottom: 100 }}
             onScroll={scrollHandler}
             scrollEventThrottle={16}
@@ -185,7 +232,34 @@ const HomeScreen = () => {
             decelerationRate="fast"
             disableIntervalMomentum={true}
             renderItem={({ item }) => {
-              // Calculate Lowest Price
+              // --- A. RENDER POST CARD ---
+              if (item.type === "post") {
+                return (
+                  <PostFeedCard
+                    id={item.id}
+                    caption={item.caption}
+                    image={item.image_url}
+                    eventTitle={item.events?.title || "Unknown Event"}
+                    hostName={"Event Update"}
+                    hostAvatar={null}
+                    timestamp={new Date(item.created_at).toLocaleDateString()}
+                    // ✅ NEW PROPS PASSED HERE
+                    attendeesCount={12} // Or dynamic number if you have it
+                    onOpenSocial={() =>
+                      openPanel([], item.events?.title || "Event")
+                    }
+                    onViewEvent={() => goToEventProfile(item, true)}
+                    onOpenDiscussion={() =>
+                      navigation.navigate("EventCommunity", {
+                        eventId: item.event_id, // Use the ID from the post
+                        eventTitle: item.events?.title || "Event",
+                      })
+                    }
+                  />
+                );
+              }
+
+              // --- B. RENDER EVENT CARD ---
               const tiers = item.ticket_tiers || [];
               const minPrice =
                 tiers.length > 0
@@ -198,8 +272,8 @@ const HomeScreen = () => {
                   title={item.title}
                   hostName={item.profiles?.username || "Unknown Host"}
                   mediaItems={item.images || []}
-                  minPrice={minPrice ? minPrice.toString() : undefined} // ✅ Pass calculated price
-                  tags={item.tags || []} // ✅ Pass tags
+                  minPrice={minPrice ? minPrice.toString() : undefined}
+                  tags={item.tags || []}
                   hostAvatar={
                     item.profiles?.avatar_url
                       ? { uri: item.profiles.avatar_url }
@@ -213,17 +287,18 @@ const HomeScreen = () => {
                   attendeesCount={12}
                   onOpenSocial={() => openPanel([], item.title)}
                   onPressHost={() => navigation.navigate("EventHostProfile")}
-                  onViewEvent={() => goToEventProfile(item)}
+                  // ✅ Pass FALSE (or nothing) for isPartial to use full data
+                  onViewEvent={() => goToEventProfile(item, false)}
                 />
               );
             }}
             ListEmptyComponent={
               <View className="flex-1 justify-center items-center pt-32 px-10">
                 <Text className="text-white text-xl font-bold mb-2">
-                  No upcoming events
+                  Feed is empty
                 </Text>
                 <Text className="text-gray-500 text-center">
-                  Be the first to host one!
+                  Follow some hosts to see updates!
                 </Text>
               </View>
             }
@@ -231,7 +306,7 @@ const HomeScreen = () => {
         )}
       </SafeAreaView>
 
-      {/* SIDE PANEL (Social) - Kept same as before */}
+      {/* SIDE PANEL */}
       {isPanelOpen && (
         <View style={StyleSheet.absoluteFill} className="z-50">
           <Pressable

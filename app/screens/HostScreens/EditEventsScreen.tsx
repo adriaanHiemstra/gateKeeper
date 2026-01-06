@@ -60,6 +60,15 @@ if (
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
+// ✅ HELPER: Generate UUID for new tickets (Fixes the Not-Null Error)
+const generateUUID = () => {
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, function (c) {
+    const r = (Math.random() * 16) | 0,
+      v = c == "x" ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+};
+
 // --- REUSABLE COMPONENTS ---
 const CustomSwitch = ({ value, onValueChange }: any) => (
   <TouchableOpacity
@@ -181,7 +190,7 @@ const EditEventScreen = () => {
 
   // Media
   const [mediaItems, setMediaItems] = useState<
-    { uri: string; type: "image" | "video" }[]
+    { uri: string; type: "video" | "image" }[]
   >([]);
   const [showMediaOptions, setShowMediaOptions] = useState(false);
   const [selectedMediaIndex, setSelectedMediaIndex] = useState<number | null>(
@@ -275,7 +284,12 @@ const EditEventScreen = () => {
 
       if (data.images && data.images.length > 0) {
         setMediaItems(
-          data.images.map((url: string) => ({ uri: url, type: "image" }))
+          data.images.map((url: string) => ({
+            uri: url,
+            type: (url.includes(".mp4") || url.includes(".mov")
+              ? "video"
+              : "image") as "video" | "image",
+          }))
         );
       } else if (data.banner_url) {
         setMediaItems([{ uri: data.banner_url, type: "image" }]);
@@ -310,7 +324,11 @@ const EditEventScreen = () => {
     });
 
     if (!result.canceled) {
-      const newItem = { uri: result.assets[0].uri, type: "image" as const };
+      const asset = result.assets[0];
+      const newItem = {
+        uri: asset.uri,
+        type: (asset.type === "video" ? "video" : "image") as "video" | "image",
+      };
 
       if (indexToReplace !== undefined) {
         const updated = [...mediaItems];
@@ -364,6 +382,10 @@ const EditEventScreen = () => {
   };
 
   const saveTicketToState = () => {
+    if (!tempTicket.name || !tempTicket.price) {
+      Alert.alert("Missing Info", "Please add a name and price.");
+      return;
+    }
     const updated = [...tickets];
     if (editingTicketIndex !== null) {
       updated[editingTicketIndex] = tempTicket;
@@ -442,14 +464,19 @@ const EditEventScreen = () => {
       }
 
       if (tickets.length > 0) {
-        const tiersData = tickets.map((t) => ({
-          id: t.id,
-          event_id: eventId,
-          name: t.name,
-          price: parseFloat(t.price),
-          quantity_total: parseInt(t.quantity),
-          is_active: t.active,
-        }));
+        // ✅ FIX: Construct payload with ID generation on the fly
+        const tiersData = tickets.map((t) => {
+          const payload: any = {
+            event_id: eventId,
+            name: t.name,
+            price: parseFloat(t.price),
+            quantity_total: parseInt(t.quantity),
+            is_active: t.active,
+            // ✅ KEY FIX: Use existing ID or generate a new UUID
+            id: t.id || generateUUID(),
+          };
+          return payload;
+        });
 
         const { error: tierError } = await supabase
           .from("ticket_tiers")
@@ -541,13 +568,28 @@ const EditEventScreen = () => {
                 <View className="absolute top-2 right-2 z-20 bg-black/50 p-1.5 rounded-full">
                   <MoreHorizontal color="white" size={14} />
                 </View>
-                <Image
-                  source={{ uri: item.uri }}
-                  className={`w-32 h-40 rounded-2xl bg-gray-800 ${
-                    index === 0 ? "border-2 border-orange-500" : ""
-                  }`}
-                  resizeMode="cover"
-                />
+                {item.type === "video" ? (
+                  <Video
+                    source={{ uri: item.uri }}
+                    style={{
+                      width: 128,
+                      height: 160,
+                      borderRadius: 16,
+                      backgroundColor: "#000",
+                    }}
+                    resizeMode={ResizeMode.COVER}
+                    isMuted
+                    shouldPlay={false}
+                  />
+                ) : (
+                  <Image
+                    source={{ uri: item.uri }}
+                    className={`w-32 h-40 rounded-2xl bg-gray-800 ${
+                      index === 0 ? "border-2 border-orange-500" : ""
+                    }`}
+                    resizeMode="cover"
+                  />
+                )}
               </TouchableOpacity>
             ))}
           </ScrollView>
@@ -826,7 +868,7 @@ const EditEventScreen = () => {
                     placeholder="e.g. VIP Access"
                     placeholderTextColor="#555"
                     value={tempTicket.name}
-                    onChangeText={(t: string) =>
+                    onChangeText={(t) =>
                       setTempTicket({ ...tempTicket, name: t })
                     }
                     className="flex-1 text-white text-xl font-bold h-full mb-1"
@@ -847,7 +889,7 @@ const EditEventScreen = () => {
                       placeholderTextColor="#555"
                       keyboardType="numeric"
                       value={tempTicket.price}
-                      onChangeText={(t: string) =>
+                      onChangeText={(t) =>
                         setTempTicket({ ...tempTicket, price: t })
                       }
                       className="flex-1 text-white text-2xl font-bold h-full mb-1"
@@ -867,7 +909,7 @@ const EditEventScreen = () => {
                       placeholderTextColor="#555"
                       keyboardType="numeric"
                       value={tempTicket.quantity}
-                      onChangeText={(t: string) =>
+                      onChangeText={(t) =>
                         setTempTicket({ ...tempTicket, quantity: t })
                       }
                       className="flex-1 text-white text-xl font-bold h-full mb-2"
@@ -973,7 +1015,7 @@ const EditEventScreen = () => {
         </View>
       </Modal>
 
-      {/* --- DATE/TIME MODALS (With Done Button & Validation) --- */}
+      {/* --- DATE/TIME/LOCATION MODALS --- */}
       <Modal visible={!!activeDateModal} transparent animationType="slide">
         <View className="flex-1 justify-end bg-black/80">
           <View className="bg-[#1E1E1E] rounded-t-3xl p-4 h-[60%]">
@@ -1033,98 +1075,46 @@ const EditEventScreen = () => {
         </View>
       </Modal>
 
-      {/* --- LOCATION & CATEGORY MODALS (With Done Button) --- */}
-      <Modal visible={showLocationPicker} transparent animationType="slide">
-        <View className="flex-1 bg-[#1E1E1E]">
-          <SafeAreaView className="flex-1">
-            <View className="flex-row items-center justify-between px-4 py-4 border-b border-white/10">
-              <Text className="text-white text-xl font-bold">Location</Text>
-              <TouchableOpacity onPress={() => setShowLocationPicker(false)}>
-                <Text className="text-purple-400 font-bold text-lg">Done</Text>
+      <Modal visible={showLocationPicker} transparent>
+        <View className="flex-1 bg-[#121212] pt-20 px-4">
+          <TouchableOpacity onPress={() => setShowLocationPicker(false)}>
+            <Text className="text-white mb-4">Close</Text>
+          </TouchableOpacity>
+          <FlatList
+            data={MOCK_LOCATIONS}
+            renderItem={({ item }) => (
+              <TouchableOpacity
+                onPress={() => {
+                  setLocation(item);
+                  setShowLocationPicker(false);
+                }}
+                className="p-4 border-b border-white/10"
+              >
+                <Text className="text-white">{item}</Text>
               </TouchableOpacity>
-            </View>
-            <View className="px-4 py-2">
-              <View className="flex-row items-center bg-black/40 rounded-xl px-4 h-12">
-                <Search color="#999" size={20} className="mr-2" />
-                <TextInput
-                  placeholder="Search..."
-                  placeholderTextColor="#666"
-                  value={locQuery}
-                  onChangeText={handleLocationSearch}
-                  autoFocus
-                  className="flex-1 text-white text-lg font-medium"
-                />
-              </View>
-            </View>
-            <FlatList
-              data={MOCK_LOCATIONS}
-              keyExtractor={(item) => item}
-              renderItem={({ item }) => (
-                <TouchableOpacity
-                  onPress={() => {
-                    setLocation(item);
-                    setShowLocationPicker(false);
-                  }}
-                  className="flex-row items-center p-4 border-b border-white/5"
-                >
-                  <View className="bg-white/10 p-2 rounded-full mr-3">
-                    <MapPin color="white" size={20} />
-                  </View>
-                  <Text className="text-white text-lg font-medium">{item}</Text>
-                </TouchableOpacity>
-              )}
-            />
-          </SafeAreaView>
+            )}
+          />
         </View>
       </Modal>
-
-      <Modal visible={showCategoryPicker} transparent animationType="slide">
-        <View className="flex-1 bg-[#1E1E1E] mt-24">
-          <SafeAreaView className="flex-1">
-            <View className="flex-row items-center justify-between px-4  py-4 border-b border-white/10">
-              <Text className="text-white text-xl font-bold">Categories</Text>
-              <TouchableOpacity onPress={() => setShowCategoryPicker(false)}>
-                <Text className="text-purple-400 font-bold text-lg">Done</Text>
+      <Modal visible={showCategoryPicker} transparent>
+        <View className="flex-1 bg-[#121212] pt-20 px-4">
+          <TouchableOpacity onPress={() => setShowCategoryPicker(false)}>
+            <Text className="text-white mb-4">Close</Text>
+          </TouchableOpacity>
+          <FlatList
+            data={AVAILABLE_TAGS}
+            renderItem={({ item }) => (
+              <TouchableOpacity
+                onPress={() => {
+                  toggleTag(item);
+                }}
+                className="p-4 border-b border-white/10 flex-row justify-between"
+              >
+                <Text className="text-white">{item}</Text>
+                {selectedTags.includes(item) && <Check color="#D087FF" />}
               </TouchableOpacity>
-            </View>
-            <View className="px-4 py-2">
-              <View className="flex-row items-center bg-black/40 rounded-xl px-4 h-12">
-                <Search color="#999" size={20} className="mr-2" />
-                <TextInput
-                  placeholder="Search categories..."
-                  placeholderTextColor="#666"
-                  value={tagQuery}
-                  onChangeText={setTagQuery}
-                  className="flex-1 text-white text-lg font-medium"
-                />
-              </View>
-            </View>
-            <FlatList
-              data={AVAILABLE_TAGS.filter((t) =>
-                t.toLowerCase().includes(tagQuery.toLowerCase())
-              )}
-              keyExtractor={(item) => item}
-              contentContainerStyle={{ paddingBottom: 40 }}
-              renderItem={({ item }) => {
-                const isSelected = selectedTags.includes(item);
-                return (
-                  <TouchableOpacity
-                    onPress={() => toggleTag(item)}
-                    className="flex-row items-center justify-between p-4 border-b border-white/5"
-                  >
-                    <Text
-                      className={`text-lg font-bold ${
-                        isSelected ? "text-purple-300" : "text-white"
-                      }`}
-                    >
-                      {item}
-                    </Text>
-                    {isSelected && <Check color="#D087FF" size={20} />}
-                  </TouchableOpacity>
-                );
-              }}
-            />
-          </SafeAreaView>
+            )}
+          />
         </View>
       </Modal>
     </View>
