@@ -1,4 +1,5 @@
-import React, { useState } from "react";
+// app/screens/SearchScreen.tsx
+import React, { useState, useEffect, useCallback } from "react";
 import {
   View,
   Text,
@@ -15,6 +16,7 @@ import {
   UIManager,
   KeyboardAvoidingView,
   Modal,
+  ActivityIndicator,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
@@ -25,17 +27,17 @@ import {
   ArrowRight,
 } from "lucide-react-native";
 import { useNavigation } from "@react-navigation/native";
-import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { CalendarList, DateData } from "react-native-calendars";
 
-// Components
+// Components & Config
 import TopBanner from "../components/TopBanner";
 import BottomNav from "../components/BottomNav";
 import EventFeedCard from "../components/EventFeedCard";
-
-// Styles
 import { bannerGradient, fireGradient } from "../styles/colours";
-import { RootStackParamList } from "../types/types";
+import { supabase } from "../lib/supabase";
+
+const { width } = Dimensions.get("window");
+const ITEM_WIDTH = width / 2;
 
 if (
   Platform.OS === "android" &&
@@ -44,100 +46,20 @@ if (
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
-const { width } = Dimensions.get("window");
-const ITEM_WIDTH = width / 2;
+// --- HELPERS ---
 
-// --- DATA ---
-const ALL_EVENTS = [
-  {
-    id: "1",
-    title: "Neon Jungle",
-    category: "Techno",
-    image: require("../assets/imagePlaceHolder1.png"),
-    host: "Underground SA",
-    hostImg: require("../assets/profile-pic-2.png"),
-    attendees: 42,
-  },
-  {
-    id: "2",
-    title: "Rugby Finals",
-    category: "Rugby",
-    image: require("../assets/imagePlaceHolder2.png"),
-    host: "Stormers",
-    hostImg: require("../assets/profile-pic-1.png"),
-    attendees: 1200,
-  },
-  {
-    id: "3",
-    title: "Forest Run",
-    category: "Hikes",
-    image: require("../assets/imagePlaceHolder3.png"),
-    host: "Trail Blazrs",
-    hostImg: require("../assets/profile-pic-2.png"),
-    attendees: 15,
-  },
-  {
-    id: "4",
-    title: "Comedy Night",
-    category: "Comedy",
-    image: require("../assets/imagePlaceHolder4.png"),
-    host: "Cape Town Comedy",
-    hostImg: require("../assets/profile-pic-1.png"),
-    attendees: 80,
-  },
-  {
-    id: "5",
-    title: "Summer Slam",
-    category: "Beach",
-    image: require("../assets/imagePlaceHolder5.png"),
-    host: "Rockstar Events",
-    hostImg: require("../assets/profile-pic-1.png"),
-    attendees: 350,
-  },
-  {
-    id: "6",
-    title: "Jazz Cafe",
-    category: "Live Music",
-    image: require("../assets/imagePlaceHolder6.png"),
-    host: "The Blue Note",
-    hostImg: require("../assets/profile-pic-2.png"),
-    attendees: 45,
-  },
-];
-
+// 1. Helper for Category Colors
 const GET_CATEGORY_COLOR = (category: string) => {
-  const cat = category.toLowerCase();
-  if (
-    ["techno", "house", "edm", "trance", "dnb", "electronic"].some((x) =>
-      cat.includes(x)
-    )
-  )
+  const cat = (category || "").toLowerCase();
+  if (["techno", "house", "edm", "electronic"].some((x) => cat.includes(x)))
     return "#A855F7";
-  if (
-    ["live music", "rock", "jazz", "bands", "metal", "music"].some((x) =>
-      cat.includes(x)
-    )
-  )
+  if (["live", "rock", "jazz", "band"].some((x) => cat.includes(x)))
     return "#F43F5E";
-  if (
-    ["rugby", "soccer", "football", "cricket", "tennis", "sports", "ball"].some(
-      (x) => cat.includes(x)
-    )
-  )
+  if (["sport", "rugby", "soccer"].some((x) => cat.includes(x)))
     return "#F97316";
-  if (
-    ["hikes", "beach", "run", "trail", "outdoors", "nature", "walk"].some((x) =>
-      cat.includes(x)
-    )
-  )
+  if (["hike", "nature", "outdoor"].some((x) => cat.includes(x)))
     return "#10B981";
-  if (
-    ["comedy", "theater", "magic", "shows", "standup", "play"].some((x) =>
-      cat.includes(x)
-    )
-  )
-    return "#3B82F6";
-  return "#ffffff";
+  return "#3B82F6"; // Default blue
 };
 
 const ALL_INTERESTS = [
@@ -148,23 +70,60 @@ const ALL_INTERESTS = [
   "Rugby",
   "Soccer",
   "Hikes",
-  "Beach",
   "Comedy",
   "Theater",
-  "Magic",
 ];
 const TIME_FILTERS = ["Today", "Tomorrow", "This Weekend", "This Month"];
 
+// 2. Helper for Date Logic (INCORPORATED HERE)
+const getDateRangeForFilter = (filter: string) => {
+  const now = new Date();
+  let start = new Date(now);
+  let end = new Date(now);
+
+  // Set to start/end of day
+  start.setHours(0, 0, 0, 0);
+  end.setHours(23, 59, 59, 999);
+
+  if (filter === "Today")
+    return { start: start.toISOString(), end: end.toISOString() };
+
+  if (filter === "Tomorrow") {
+    start.setDate(now.getDate() + 1);
+    end.setDate(now.getDate() + 1);
+    return { start: start.toISOString(), end: end.toISOString() };
+  }
+
+  if (filter === "This Weekend") {
+    // Calculate next Friday
+    const day = now.getDay();
+    const dist = 5 - day + (day >= 5 ? 7 : 0);
+    start.setDate(now.getDate() + dist);
+    end.setDate(start.getDate() + 2); // Sunday
+    return { start: start.toISOString(), end: end.toISOString() };
+  }
+
+  if (filter === "This Month") {
+    start.setDate(1);
+    end.setMonth(now.getMonth() + 1);
+    end.setDate(0);
+    return { start: start.toISOString(), end: end.toISOString() };
+  }
+  return null;
+};
+
 const SearchScreen = () => {
-  const navigation =
-    useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const navigation = useNavigation<any>();
 
   // --- STATE ---
   const [query, setQuery] = useState("");
   const [isExpanded, setIsExpanded] = useState(false);
   const [activeFilters, setActiveFilters] = useState<string[]>([]);
   const [activeTimeFilters, setActiveTimeFilters] = useState<string[]>([]);
-  const [results, setResults] = useState(ALL_EVENTS);
+
+  // Data State
+  const [results, setResults] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<any>(null);
 
   // Calendar State
@@ -174,7 +133,105 @@ const SearchScreen = () => {
   const [markedDates, setMarkedDates] = useState<any>({});
   const [isCustomDateActive, setIsCustomDateActive] = useState(false);
 
+  // --- 1. SEARCH FUNCTION ---
+  const fetchEvents = useCallback(async () => {
+    setLoading(true);
+    try {
+      // Start building the query
+      const now = new Date().toISOString();
+
+      let dbQuery = supabase
+        .from("events")
+        .select(
+          `
+          *,
+          profiles:host_id ( username, avatar_url ),
+          venues:venue_id ( name, address )
+        `
+        )
+        .gte("date", now);
+
+      // A. Text Search (Title OR Description)
+      if (query.trim()) {
+        const text = query.trim();
+        dbQuery = dbQuery.or(
+          `title.ilike.%${text}%,description.ilike.%${text}%`
+        );
+      }
+
+      // B. Category Filter
+      if (activeFilters.length > 0) {
+        // Build a filter string: category.ilike.%Techno%,category.ilike.%House%
+        const categoriesString = activeFilters
+          .map((f) => `category.ilike.%${f}%`)
+          .join(",");
+        dbQuery = dbQuery.or(categoriesString);
+      }
+
+      // C. Date Filter logic
+      let dateStart = null;
+      let dateEnd = null;
+
+      // Check Time Filters ("This Weekend" etc)
+      if (activeTimeFilters.length > 0) {
+        const range = getDateRangeForFilter(activeTimeFilters[0]); // ✅ USES THE HELPER HERE
+        if (dateStart) dbQuery = dbQuery.gte("date", dateStart);
+        if (dateEnd) dbQuery = dbQuery.lte("date", dateEnd);
+      }
+      // Check Custom Calendar
+      else if (isCustomDateActive && startDate) {
+        dateStart = startDate;
+        dateEnd = endDate || startDate; // If single day selected
+      }
+
+      // Apply Date Filters
+      if (dateStart) dbQuery = dbQuery.gte("date", dateStart);
+      if (dateEnd) dbQuery = dbQuery.lte("date", dateEnd);
+
+      // Order by date (soonest first)
+      dbQuery = dbQuery.order("date", { ascending: true });
+
+      const { data, error } = await dbQuery;
+
+      if (error) throw error;
+      setResults(data || []);
+    } catch (err) {
+      console.log("Search Error:", err);
+    } finally {
+      setLoading(false);
+    }
+  }, [
+    query,
+    activeFilters,
+    activeTimeFilters,
+    startDate,
+    endDate,
+    isCustomDateActive,
+  ]);
+
+  // Initial Load
+  useEffect(() => {
+    fetchEvents();
+  }, []);
+
   // --- ACTIONS ---
+  const handleSearch = () => {
+    Keyboard.dismiss();
+    setIsExpanded(false);
+    fetchEvents();
+  };
+
+  const handleClear = () => {
+    setQuery("");
+    setActiveFilters([]);
+    setActiveTimeFilters([]);
+    setIsCustomDateActive(false);
+    setStartDate(null);
+    setEndDate(null);
+    setMarkedDates({});
+    // Reset to show all upcoming
+    setTimeout(() => fetchEvents(), 100);
+  };
 
   const toggleFilter = (category: string) => {
     setActiveFilters((prev) =>
@@ -187,9 +244,8 @@ const SearchScreen = () => {
   const toggleTimeFilter = (time: string) => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setIsCustomDateActive(false);
-    setActiveTimeFilters((prev) =>
-      prev.includes(time) ? prev.filter((t) => t !== time) : [...prev, time]
-    );
+    // Allow only one time filter at a time for simplicity
+    setActiveTimeFilters((prev) => (prev.includes(time) ? [] : [time]));
   };
 
   const handleCustomDatePress = () => {
@@ -203,34 +259,6 @@ const SearchScreen = () => {
       setShowCalendar(true);
       setActiveTimeFilters([]);
     }
-  };
-
-  const handleSearch = () => {
-    Keyboard.dismiss();
-    setIsExpanded(false);
-    let filtered = ALL_EVENTS;
-    const lowerQuery = query.toLowerCase();
-    if (activeFilters.length > 0)
-      filtered = filtered.filter((e) => activeFilters.includes(e.category));
-    if (query.trim().length > 0)
-      filtered = filtered.filter(
-        (e) =>
-          e.title.toLowerCase().includes(lowerQuery) ||
-          e.category.toLowerCase().includes(lowerQuery) ||
-          e.host.toLowerCase().includes(lowerQuery)
-      );
-    setResults(filtered);
-  };
-
-  const handleClear = () => {
-    setQuery("");
-    setActiveFilters([]);
-    setActiveTimeFilters([]);
-    setIsCustomDateActive(false);
-    setStartDate(null);
-    setEndDate(null);
-    setMarkedDates({});
-    setResults(ALL_EVENTS);
   };
 
   // --- CALENDAR LOGIC ---
@@ -251,35 +279,22 @@ const SearchScreen = () => {
       const range = getDaysArray(startDate, day.dateString);
       const newMarked: any = {};
       range.forEach((date, index) => {
-        if (index === 0)
-          newMarked[date] = {
-            selected: true,
-            startingDay: true,
-            color: "#FA8900",
-            textColor: "white",
-          };
-        else if (index === range.length - 1)
-          newMarked[date] = {
-            selected: true,
-            endingDay: true,
-            color: "#FA8900",
-            textColor: "white",
-          };
-        else
-          newMarked[date] = {
-            selected: true,
-            color: "#FA8900",
-            textColor: "white",
-          };
+        newMarked[date] = {
+          selected: true,
+          color: "#FA8900",
+          textColor: "white",
+        };
       });
       const d1 = new Date(startDate);
       const d2 = new Date(day.dateString);
+
       if (d1 > d2) {
         setStartDate(day.dateString);
         setEndDate(startDate);
       } else {
         setEndDate(day.dateString);
       }
+
       setMarkedDates(newMarked);
     }
   };
@@ -300,14 +315,7 @@ const SearchScreen = () => {
     return arr;
   };
 
-  const formatDate = (dateString: string) => {
-    const d = new Date(dateString);
-    return `${d.getDate()}/${d.getMonth() + 1}/${d
-      .getFullYear()
-      .toString()
-      .slice(-2)}`;
-  };
-
+  // --- RENDER ITEMS ---
   const FilterBubble = ({
     label,
     color = "#fff",
@@ -337,7 +345,6 @@ const SearchScreen = () => {
     </TouchableOpacity>
   );
 
-  // 👇 DEFINED INSIDE THE COMPONENT, BEFORE RETURN
   const renderEventItem = ({ item }: { item: any }) => (
     <TouchableOpacity
       activeOpacity={0.9}
@@ -346,7 +353,11 @@ const SearchScreen = () => {
       onPress={() => setSelectedEvent(item)}
     >
       <Image
-        source={item.image}
+        source={
+          item.banner_url
+            ? { uri: item.banner_url }
+            : require("../assets/imagePlaceHolder1.png")
+        }
         className="w-full h-full opacity-80"
         resizeMode="cover"
       />
@@ -356,6 +367,7 @@ const SearchScreen = () => {
       >
         <Text
           className="text-white font-bold text-xl shadow-black"
+          numberOfLines={2}
           style={{ fontFamily: "Jost-Medium" }}
         >
           {item.title}
@@ -364,13 +376,15 @@ const SearchScreen = () => {
           className="text-xs font-bold uppercase tracking-wider mt-1"
           style={{ color: GET_CATEGORY_COLOR(item.category) }}
         >
-          {item.category}
+          {item.category || "Event"}
+        </Text>
+        <Text className="text-gray-400 text-xs mt-1">
+          {new Date(item.date).toLocaleDateString()}
         </Text>
       </LinearGradient>
     </TouchableOpacity>
   );
 
-  // --- MAIN RENDER ---
   return (
     <View className="flex-1 bg-[#121212]">
       <LinearGradient {...bannerGradient} style={StyleSheet.absoluteFill} />
@@ -416,14 +430,18 @@ const SearchScreen = () => {
                       {...fireGradient}
                       className="w-10 h-10 rounded-xl items-center justify-center shadow-lg"
                     >
-                      <ArrowRight color="white" size={24} strokeWidth={3} />
+                      {loading ? (
+                        <ActivityIndicator color="white" size="small" />
+                      ) : (
+                        <ArrowRight color="white" size={24} strokeWidth={3} />
+                      )}
                     </LinearGradient>
                   </TouchableOpacity>
                 </View>
               </View>
             </View>
 
-            {/* CONTENT */}
+            {/* EXPANDED FILTERS OR RESULTS */}
             {isExpanded ? (
               <View className="flex-1 px-4">
                 <ScrollView
@@ -435,18 +453,7 @@ const SearchScreen = () => {
                     Categories
                   </Text>
                   <View className="flex-row flex-wrap">
-                    {query.length > 0 && (
-                      <TouchableOpacity className="px-5 py-3 rounded-full mr-3 mb-3 bg-white/20 border border-white/40 flex-row items-center">
-                        <Search color="white" size={16} className="mr-2" />
-                        <Text className="text-white font-bold italic text-base">
-                          "{query}"
-                        </Text>
-                      </TouchableOpacity>
-                    )}
-
-                    {ALL_INTERESTS.filter((cat) =>
-                      cat.toLowerCase().includes(query.toLowerCase())
-                    ).map((cat) => (
+                    {ALL_INTERESTS.map((cat) => (
                       <FilterBubble
                         key={cat}
                         label={cat}
@@ -461,38 +468,22 @@ const SearchScreen = () => {
                     Time Period
                   </Text>
                   <View className="flex-row flex-wrap">
-                    {TIME_FILTERS.map((time) => {
-                      const isSelected = activeTimeFilters.includes(time);
-                      return (
-                        <TouchableOpacity
-                          key={time}
-                          onPress={() => toggleTimeFilter(time)}
-                          className={`px-5 py-3 rounded-full mr-3 mb-3 border-2 ${
-                            isSelected
-                              ? "bg-white border-white"
-                              : "border-gray-600 bg-transparent"
-                          }`}
-                        >
-                          <Text
-                            className={`font-bold text-base ${
-                              isSelected ? "text-black" : "text-gray-400"
-                            }`}
-                          >
-                            {time}
-                          </Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-
-                    {/* Custom Date Bubble */}
+                    {TIME_FILTERS.map((time) => (
+                      <FilterBubble
+                        key={time}
+                        label={time}
+                        color="#fff"
+                        isSelected={activeTimeFilters.includes(time)}
+                        onPress={() => toggleTimeFilter(time)}
+                      />
+                    ))}
                     <TouchableOpacity
                       onPress={handleCustomDatePress}
                       className={`px-5 py-3 rounded-full mr-3 mb-3 border-2 flex-row items-center ${
                         isCustomDateActive
-                          ? "bg-white border-white flex-1"
+                          ? "bg-white border-white"
                           : "border-gray-600 bg-transparent"
                       }`}
-                      style={isCustomDateActive ? { minWidth: "48%" } : {}}
                     >
                       <CalendarIcon
                         color={isCustomDateActive ? "black" : "#9ca3af"}
@@ -504,8 +495,8 @@ const SearchScreen = () => {
                           isCustomDateActive ? "text-black" : "text-gray-400"
                         }`}
                       >
-                        {isCustomDateActive && startDate && endDate
-                          ? `${formatDate(startDate)} - ${formatDate(endDate)}`
+                        {isCustomDateActive && startDate
+                          ? "Selected"
                           : "Custom Date"}
                       </Text>
                     </TouchableOpacity>
@@ -523,20 +514,25 @@ const SearchScreen = () => {
                     className="text-white text-2xl font-bold px-4 mb-4"
                     style={{ fontFamily: "Jost-Medium" }}
                   >
-                    {results.length > 0 ? "Events for you" : ""}
+                    {results.length > 0
+                      ? query
+                        ? `Results for "${query}"`
+                        : "Upcoming Events"
+                      : ""}
                   </Text>
                 }
                 ListEmptyComponent={
-                  <View className="items-center justify-center mt-20 px-10">
-                    <Search color="#333" size={64} className="mb-4" />
-                    <Text className="text-white text-xl font-bold text-center mb-2">
-                      No events found
-                    </Text>
-                    <Text className="text-gray-500 text-center">
-                      Sorry we couldn't find any events for you, try searching
-                      something else.
-                    </Text>
-                  </View>
+                  !loading ? (
+                    <View className="items-center justify-center mt-20 px-10">
+                      <Search color="#333" size={64} className="mb-4" />
+                      <Text className="text-white text-xl font-bold text-center mb-2">
+                        No events found
+                      </Text>
+                      <Text className="text-gray-500 text-center">
+                        Try adjusting your filters or search terms.
+                      </Text>
+                    </View>
+                  ) : null
                 }
                 renderItem={renderEventItem}
               />
@@ -545,7 +541,7 @@ const SearchScreen = () => {
         </KeyboardAvoidingView>
       </SafeAreaView>
 
-      {/* Calendar Modal */}
+      {/* CALENDAR MODAL */}
       <Modal visible={showCalendar} transparent={true} animationType="slide">
         <View className="flex-1 justify-end bg-black/80">
           <View className="bg-[#1E1E1E] rounded-t-3xl p-4 border-t border-white/10 h-[75%]">
@@ -567,27 +563,20 @@ const SearchScreen = () => {
               theme={{
                 backgroundColor: "#1E1E1E",
                 calendarBackground: "#1E1E1E",
-                textSectionTitleColor: "#b6c1cd",
+                dayTextColor: "#fff",
+                monthTextColor: "#fff",
                 selectedDayBackgroundColor: "#FA8900",
-                selectedDayTextColor: "#ffffff",
+                selectedDayTextColor: "#fff",
                 todayTextColor: "#FA8900",
-                dayTextColor: "#ffffff",
                 textDisabledColor: "#444",
                 dotColor: "#FA8900",
                 selectedDotColor: "#ffffff",
                 arrowColor: "#FA8900",
-                disabledArrowColor: "#d9e1e8",
-                monthTextColor: "white",
+                // monthTextColor: "white",
                 indicatorColor: "white",
                 textDayFontFamily: "Jost-Medium",
                 textMonthFontFamily: "Jost-Medium",
                 textDayHeaderFontFamily: "Jost-Medium",
-                textDayFontWeight: "300",
-                textMonthFontWeight: "bold",
-                textDayHeaderFontWeight: "300",
-                textDayFontSize: 16,
-                textMonthFontSize: 20,
-                textDayHeaderFontSize: 14,
               }}
               pastScrollRange={0}
               futureScrollRange={12}
@@ -595,7 +584,10 @@ const SearchScreen = () => {
               showScrollIndicator={true}
             />
             <TouchableOpacity
-              onPress={() => setShowCalendar(false)}
+              onPress={() => {
+                setShowCalendar(false);
+                fetchEvents();
+              }}
               className="w-full mt-4 mb-6 shadow-lg shadow-orange-500/30"
             >
               <LinearGradient
@@ -611,7 +603,7 @@ const SearchScreen = () => {
         </View>
       </Modal>
 
-      {/* Full Screen Event Modal */}
+      {/* EVENT PREVIEW MODAL */}
       <Modal
         visible={!!selectedEvent}
         transparent={false}
@@ -631,28 +623,30 @@ const SearchScreen = () => {
               <EventFeedCard
                 id={selectedEvent.id}
                 title={selectedEvent.title}
-                hostName={selectedEvent.host}
-                hostAvatar={selectedEvent.hostImg}
-                image={selectedEvent.image}
-                attendeesCount={selectedEvent.attendees}
+                hostName={selectedEvent.profiles?.username || "Host"}
+                hostAvatar={selectedEvent.profiles?.avatar_url}
+                image={selectedEvent.banner_url}
+                attendeesCount={100}
                 showSocial={false}
                 disableTap={true}
                 onOpenSocial={() => {}}
                 onPressHost={() => {
                   setSelectedEvent(null);
-                  navigation.navigate("EventHostProfile");
+                  navigation.navigate("EventHostProfile", {
+                    hostId: selectedEvent.host_id,
+                  });
                 }}
                 onViewEvent={() => {}}
+                // Added empty handler to prevent error if it's required
+                onOpenDiscussion={() => {}}
               />
               <View className="w-full px-6 mt-6">
                 <TouchableOpacity
                   onPress={() => {
                     setSelectedEvent(null);
                     navigation.navigate("EventProfile", {
-                      eventName: selectedEvent.title,
-                      attendees: selectedEvent.attendees,
-                      logo: selectedEvent.hostImg,
-                      banner: selectedEvent.image,
+                      eventId: selectedEvent.id,
+                      eventTitle: selectedEvent.title,
                     });
                   }}
                   activeOpacity={0.9}

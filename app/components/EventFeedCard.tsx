@@ -55,6 +55,8 @@ type EventFeedCardProps = {
   showSocial?: boolean;
   tags?: string[];
   minPrice?: string;
+  disableTap?: boolean;
+  onOpenDiscussion?: () => void;
 };
 
 const getSource = (source: any) => {
@@ -86,6 +88,7 @@ const EventFeedCard = ({
   onPressHost,
   onViewEvent,
   showSocial = true,
+  disableTap = false,
 }: EventFeedCardProps) => {
   const [isLiked, setIsLiked] = useState(false);
   const [isFullScreen, setIsFullScreen] = useState(false);
@@ -275,6 +278,7 @@ const EventFeedCard = ({
 
           <TouchableOpacity
             onPress={onViewEvent}
+            disabled={disableTap}
             activeOpacity={0.9}
             className="w-full shadow-lg shadow-orange-500/30"
           >
