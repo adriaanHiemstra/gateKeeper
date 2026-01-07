@@ -1,6 +1,6 @@
 // app/screens/CreateEventScreen.tsx
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react"; // ✅ Added useEffect
 import {
   View,
   Text,
@@ -36,7 +36,7 @@ import {
   Plus,
   Hash,
   Sparkles,
-  Star, // ✅ Added Star icon for the banner badge
+  Star,
 } from "lucide-react-native";
 import * as ImagePicker from "expo-image-picker";
 import { KeyboardAwareScrollView } from "react-native-keyboard-aware-scroll-view";
@@ -151,30 +151,8 @@ const MOCK_LOCATIONS = [
   "Kirstenbosch Gardens, Newlands",
 ];
 
-const AVAILABLE_TAGS = [
-  "Techno",
-  "House",
-  "Live Music",
-  "Rock",
-  "Jazz",
-  "Acoustic",
-  "Sports",
-  "Rugby",
-  "Soccer",
-  "Cricket",
-  "Tennis",
-  "Outdoors",
-  "Beach",
-  "Hike",
-  "Run",
-  "Market",
-  "Festival",
-  "Comedy",
-  "Theatre",
-  "Cinema",
-  "Gaming",
-  "Networking",
-];
+// ❌ REMOVED: const AVAILABLE_TAGS = [...]
+// We now fetch these from the DB!
 
 // --- TYPES ---
 type TicketTier = {
@@ -218,6 +196,9 @@ const CreateEventScreen = () => {
   const [location, setLocation] = useState("");
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
 
+  // ✅ NEW: State for DB categories
+  const [availableTags, setAvailableTags] = useState<string[]>([]);
+
   const [activeDateModal, setActiveDateModal] = useState<
     "start" | "end" | null
   >(null);
@@ -232,6 +213,21 @@ const CreateEventScreen = () => {
   const [tagQuery, setTagQuery] = useState("");
 
   const [loading, setLoading] = useState(false);
+
+  // ✅ FETCH CATEGORIES ON LOAD
+  useEffect(() => {
+    const fetchCategories = async () => {
+      const { data, error } = await supabase
+        .from("categories")
+        .select("name")
+        .order("name", { ascending: true });
+
+      if (data) {
+        setAvailableTags(data.map((cat: any) => cat.name));
+      }
+    };
+    fetchCategories();
+  }, []);
 
   const todayDateString = new Date().toISOString().split("T")[0];
 
@@ -379,7 +375,7 @@ const CreateEventScreen = () => {
           date: startISO,
           end_date: endISO,
           location_text: location,
-          banner_url: uploadedUrls[0], // Index 0 is always banner
+          banner_url: uploadedUrls[0],
           images: uploadedUrls,
           tags: selectedTags,
           is_public: isPublic,
@@ -475,7 +471,6 @@ const CreateEventScreen = () => {
                 onPress={() => handlePickMedia(index)}
                 className="relative mr-3"
               >
-                {/* ✅ VISUAL MARKER FOR BANNER (INDEX 0) */}
                 {index === 0 && (
                   <View className="absolute top-0 left-0 z-20 m-2 bg-orange-500 px-2 py-1 rounded-md shadow-lg flex-row items-center">
                     <Star
@@ -498,7 +493,7 @@ const CreateEventScreen = () => {
                       height: 160,
                       borderRadius: 16,
                       backgroundColor: "#000",
-                      borderWidth: index === 0 ? 2 : 0, // Orange border for banner
+                      borderWidth: index === 0 ? 2 : 0,
                       borderColor: index === 0 ? "#FA8900" : "transparent",
                     }}
                     resizeMode={ResizeMode.COVER}
@@ -594,7 +589,8 @@ const CreateEventScreen = () => {
             multiline={true}
           />
 
-          {/* ... 3. TICKET TIERS SECTION ... */}
+          {/* ... TICKET TIERS & SWITCH (Unchanged) ... */}
+          {/* (Kept your existing ticket logic here) */}
           <View className="mb-8">
             <View className="flex-row justify-between items-end mb-4">
               <Text className="text-white text-xl font-bold">Ticket Tiers</Text>
@@ -709,9 +705,111 @@ const CreateEventScreen = () => {
         </View>
       </SafeAreaView>
 
-      {/* --- TICKET MODAL --- */}
+      {/* --- MODALS (Ticket, Date, Time, Location) --- */}
+      {/* (Kept your existing modals) */}
+
+      {/* --- CATEGORY PICKER MODAL (UPDATED) --- */}
+      <Modal visible={showCategoryPicker} transparent animationType="slide">
+        <View className="flex-1 justify-end bg-black/80">
+          <View className="bg-[#1E1E1E] rounded-t-3xl h-[80%] overflow-hidden">
+            <View className="flex-row items-center justify-between px-4 py-4 border-b border-white/10">
+              <Text className="text-white text-xl font-bold">Categories</Text>
+              <TouchableOpacity onPress={() => setShowCategoryPicker(false)}>
+                <Text className="text-purple-400 font-bold text-lg">Done</Text>
+              </TouchableOpacity>
+            </View>
+            <View className="px-4 py-2">
+              <View className="flex-row items-center bg-black/40 rounded-xl px-4 h-12">
+                <Search color="#999" size={20} className="mr-2" />
+                <TextInput
+                  placeholder="Search categories..."
+                  placeholderTextColor="#666"
+                  value={tagQuery}
+                  onChangeText={setTagQuery}
+                  className="flex-1 text-white text-lg font-medium"
+                />
+              </View>
+            </View>
+            {/* ✅ UPDATED: Use availableTags state from DB */}
+            <FlatList
+              data={availableTags.filter((t) =>
+                t.toLowerCase().includes(tagQuery.toLowerCase())
+              )}
+              keyExtractor={(item) => item}
+              contentContainerStyle={{ paddingBottom: 40 }}
+              renderItem={({ item }) => {
+                const isSelected = selectedTags.includes(item);
+                return (
+                  <TouchableOpacity
+                    onPress={() => toggleTag(item)}
+                    className="flex-row items-center justify-between p-4 border-b border-white/5"
+                  >
+                    <Text
+                      className={`text-lg font-bold ${
+                        isSelected ? "text-purple-300" : "text-white"
+                      }`}
+                    >
+                      {item}
+                    </Text>
+                    {isSelected && <Check color="#D087FF" size={20} />}
+                  </TouchableOpacity>
+                );
+              }}
+            />
+          </View>
+        </View>
+      </Modal>
+
+      {/* ... OTHER MODALS ... */}
+      <Modal visible={showLocationPicker} transparent animationType="slide">
+        <View className="flex-1 bg-[#1E1E1E]">
+          <SafeAreaView className="flex-1">
+            <View className="flex-row items-center px-4 py-4 border-b border-white/10">
+              <TouchableOpacity
+                onPress={() => setShowLocationPicker(false)}
+                className="mr-4"
+              >
+                <ArrowLeft color="white" size={24} />
+              </TouchableOpacity>
+              <View className="flex-1 flex-row items-center bg-black/40 rounded-xl px-4 h-12">
+                <Search color="#999" size={20} className="mr-2" />
+                <TextInput
+                  placeholder="Search..."
+                  placeholderTextColor="#666"
+                  value={locQuery}
+                  onChangeText={handleLocationSearch}
+                  autoFocus
+                  className="flex-1 text-white text-lg font-medium"
+                />
+              </View>
+            </View>
+            <FlatList
+              data={locResults}
+              keyExtractor={(item) => item}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  onPress={() => {
+                    setLocation(item);
+                    setShowLocationPicker(false);
+                  }}
+                  className="flex-row items-center p-4 border-b border-white/5"
+                >
+                  <View className="bg-white/10 p-2 rounded-full mr-3">
+                    <MapPin color="white" size={20} />
+                  </View>
+                  <Text className="text-white text-lg font-medium">{item}</Text>
+                </TouchableOpacity>
+              )}
+            />
+          </SafeAreaView>
+        </View>
+      </Modal>
+
+      {/* Ticket Modal & Date/Time Modals */}
       <Modal visible={showTicketModal} transparent animationType="slide">
         <View className="flex-1 justify-end bg-black/60">
+          {/* ... Ticket Modal Content (Same as before) ... */}
+          {/* Simplified for brevity as it was unchanged */}
           <View className="h-[85%] bg-[#121212] rounded-t-[40px] overflow-hidden border-t border-white/20 shadow-2xl shadow-purple-500/20">
             {/* Header */}
             <LinearGradient
@@ -911,57 +1009,6 @@ const CreateEventScreen = () => {
         </View>
       </Modal>
 
-      {/* --- OTHER MODALS REMAIN UNCHANGED --- */}
-      <Modal visible={showCategoryPicker} transparent animationType="slide">
-        <View className="flex-1 justify-end bg-black/80">
-          <View className="bg-[#1E1E1E] rounded-t-3xl h-[80%] overflow-hidden">
-            <View className="flex-row items-center justify-between px-4 py-4 border-b border-white/10">
-              <Text className="text-white text-xl font-bold">Categories</Text>
-              <TouchableOpacity onPress={() => setShowCategoryPicker(false)}>
-                <Text className="text-purple-400 font-bold text-lg">Done</Text>
-              </TouchableOpacity>
-            </View>
-            <View className="px-4 py-2">
-              <View className="flex-row items-center bg-black/40 rounded-xl px-4 h-12">
-                <Search color="#999" size={20} className="mr-2" />
-                <TextInput
-                  placeholder="Search categories..."
-                  placeholderTextColor="#666"
-                  value={tagQuery}
-                  onChangeText={setTagQuery}
-                  className="flex-1 text-white text-lg font-medium"
-                />
-              </View>
-            </View>
-            <FlatList
-              data={AVAILABLE_TAGS.filter((t) =>
-                t.toLowerCase().includes(tagQuery.toLowerCase())
-              )}
-              keyExtractor={(item) => item}
-              contentContainerStyle={{ paddingBottom: 40 }}
-              renderItem={({ item }) => {
-                const isSelected = selectedTags.includes(item);
-                return (
-                  <TouchableOpacity
-                    onPress={() => toggleTag(item)}
-                    className="flex-row items-center justify-between p-4 border-b border-white/5"
-                  >
-                    <Text
-                      className={`text-lg font-bold ${
-                        isSelected ? "text-purple-300" : "text-white"
-                      }`}
-                    >
-                      {item}
-                    </Text>
-                    {isSelected && <Check color="#D087FF" size={20} />}
-                  </TouchableOpacity>
-                );
-              }}
-            />
-          </View>
-        </View>
-      </Modal>
-
       <Modal visible={!!activeDateModal} transparent animationType="slide">
         <View className="flex-1 justify-end bg-black/80">
           <View className="bg-[#1E1E1E] rounded-t-3xl p-4 h-[70%]">
@@ -1030,50 +1077,6 @@ const CreateEventScreen = () => {
               )}
             />
           </View>
-        </View>
-      </Modal>
-
-      <Modal visible={showLocationPicker} transparent animationType="slide">
-        <View className="flex-1 bg-[#1E1E1E]">
-          <SafeAreaView className="flex-1">
-            <View className="flex-row items-center px-4 py-4 border-b border-white/10">
-              <TouchableOpacity
-                onPress={() => setShowLocationPicker(false)}
-                className="mr-4"
-              >
-                <ArrowLeft color="white" size={24} />
-              </TouchableOpacity>
-              <View className="flex-1 flex-row items-center bg-black/40 rounded-xl px-4 h-12">
-                <Search color="#999" size={20} className="mr-2" />
-                <TextInput
-                  placeholder="Search..."
-                  placeholderTextColor="#666"
-                  value={locQuery}
-                  onChangeText={handleLocationSearch}
-                  autoFocus
-                  className="flex-1 text-white text-lg font-medium"
-                />
-              </View>
-            </View>
-            <FlatList
-              data={locResults}
-              keyExtractor={(item) => item}
-              renderItem={({ item }) => (
-                <TouchableOpacity
-                  onPress={() => {
-                    setLocation(item);
-                    setShowLocationPicker(false);
-                  }}
-                  className="flex-row items-center p-4 border-b border-white/5"
-                >
-                  <View className="bg-white/10 p-2 rounded-full mr-3">
-                    <MapPin color="white" size={20} />
-                  </View>
-                  <Text className="text-white text-lg font-medium">{item}</Text>
-                </TouchableOpacity>
-              )}
-            />
-          </SafeAreaView>
         </View>
       </Modal>
     </View>

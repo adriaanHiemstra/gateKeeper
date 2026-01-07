@@ -143,6 +143,7 @@ const SearchScreen = () => {
 
   // --- STATE ---
   const [query, setQuery] = useState("");
+  const [isQueryActive, setIsQueryActive] = useState(false); // Controls if we search database text
   const [isExpanded, setIsExpanded] = useState(false);
 
   // Filter State
@@ -196,8 +197,8 @@ const SearchScreen = () => {
         )
         .gte("date", now);
 
-      // A. Text Search (Broad Match)
-      if (query.trim()) {
+      // A. Text Search (ONLY if active)
+      if (query.trim() && isQueryActive) {
         const text = query.trim();
         const searchTerms = text.split(" ");
         const conditions = searchTerms
@@ -259,6 +260,7 @@ const SearchScreen = () => {
     }
   }, [
     query,
+    isQueryActive,
     selectedTags,
     activeTimeFilters,
     startDate,
@@ -271,13 +273,52 @@ const SearchScreen = () => {
   }, [fetchEvents]);
 
   // --- ACTIONS ---
+
+  // Helper: Do we have active filters?
+  const checkActiveFilters = (
+    tags: string[],
+    times: string[],
+    customDate: boolean
+  ) => {
+    return tags.length > 0 || times.length > 0 || customDate;
+  };
+
+  const handleTextChange = (text: string) => {
+    setQuery(text);
+    if (!isExpanded) setIsExpanded(true);
+
+    // If NO filters, we search as you type.
+    // If YES filters, we assume you are just filtering the bubbles.
+    const hasFilters = checkActiveFilters(
+      selectedTags,
+      activeTimeFilters,
+      isCustomDateActive
+    );
+    if (hasFilters) {
+      setIsQueryActive(false);
+    } else {
+      setIsQueryActive(true);
+    }
+  };
+
+  const toggleQueryActive = () => {
+    // Manual override (The Mesh Bubble Tap)
+    setIsQueryActive(!isQueryActive);
+  };
+
   const handleSearch = () => {
     Keyboard.dismiss();
     setIsExpanded(false);
+
+    // ✅ FIX: Don't force setIsQueryActive(true) here!
+    // Just let the existing state stand.
+    // If user has filters selected, typing "Rug" and hitting Enter should NOT break the filters.
+    // If user has NO filters, isQueryActive is already true from handleTextChange.
   };
 
   const handleClear = () => {
     setQuery("");
+    setIsQueryActive(false);
     setSelectedTags([]);
     setActiveTimeFilters([]);
     setIsCustomDateActive(false);
@@ -288,6 +329,7 @@ const SearchScreen = () => {
 
   const removeQuery = () => {
     setQuery("");
+    setIsQueryActive(false);
   };
 
   const toggleTag = (tag: string) => {
@@ -295,6 +337,20 @@ const SearchScreen = () => {
       const newTags = prev.includes(tag)
         ? prev.filter((t) => t !== tag)
         : [...prev, tag];
+
+      // Re-evaluate
+      const hasFilters = checkActiveFilters(
+        newTags,
+        activeTimeFilters,
+        isCustomDateActive
+      );
+
+      if (hasFilters) {
+        setIsQueryActive(false); // Turn off text search if we have tags
+      } else if (query.trim().length > 0) {
+        setIsQueryActive(true); // Turn on text search if we are back to raw text
+      }
+
       return newTags;
     });
   };
@@ -306,6 +362,14 @@ const SearchScreen = () => {
       const newFilters = prev.includes(time)
         ? prev.filter((t) => t !== time)
         : [...prev, time];
+
+      const hasFilters = checkActiveFilters(selectedTags, newFilters, false);
+      if (hasFilters) {
+        setIsQueryActive(false);
+      } else if (query.trim().length > 0) {
+        setIsQueryActive(true);
+      }
+
       return newFilters;
     });
   };
@@ -313,13 +377,23 @@ const SearchScreen = () => {
   const handleCustomDatePress = () => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     if (isCustomDateActive) {
+      // Turning OFF custom date
       setIsCustomDateActive(false);
       setStartDate(null);
       setEndDate(null);
+
+      const hasFilters = checkActiveFilters(
+        selectedTags,
+        activeTimeFilters,
+        false
+      );
+      if (!hasFilters && query.trim().length > 0) setIsQueryActive(true);
     } else {
+      // Turning ON custom date
       setIsCustomDateActive(true);
       setShowCalendar(true);
       setActiveTimeFilters([]);
+      setIsQueryActive(false);
     }
   };
 
@@ -421,10 +495,7 @@ const SearchScreen = () => {
                   placeholder="Start typing..."
                   placeholderTextColor="#999"
                   value={query}
-                  onChangeText={(text) => {
-                    setQuery(text);
-                    if (!isExpanded) setIsExpanded(true);
-                  }}
+                  onChangeText={handleTextChange}
                   onFocus={() => setIsExpanded(true)}
                   className="flex-1 text-white text-xl font-medium h-full mx-2"
                   style={{ fontFamily: "Jost-Medium" }}
@@ -472,28 +543,52 @@ const SearchScreen = () => {
 
                   {/* CLOUD */}
                   <View className="flex-row flex-wrap">
-                    {/* DYNAMIC MESH BUBBLE */}
+                    {/* DYNAMIC SEARCH BUBBLE (THE TOGGLE) */}
                     {query.length > 0 && (
-                      <TouchableOpacity onPress={handleSearch}>
-                        <LinearGradient
-                          colors={RAINBOW_MESH}
-                          start={{ x: 0, y: 0 }}
-                          end={{ x: 1, y: 1 }}
-                          style={{
-                            borderRadius: 999,
-                            marginRight: 10,
-                            marginBottom: 12,
-                            paddingVertical: 14,
-                            paddingHorizontal: 24,
-                          }}
-                        >
-                          <Text
-                            className="font-bold text-base text-white"
-                            style={{ fontFamily: "Jost-Medium" }}
+                      <TouchableOpacity onPress={toggleQueryActive}>
+                        {/* ACTIVE: Rainbow Mesh */}
+                        {isQueryActive ? (
+                          <LinearGradient
+                            colors={RAINBOW_MESH}
+                            start={{ x: 0, y: 0 }}
+                            end={{ x: 1, y: 1 }}
+                            style={{
+                              borderRadius: 999,
+                              marginRight: 10,
+                              marginBottom: 12,
+                              paddingVertical: 14,
+                              paddingHorizontal: 24,
+                            }}
                           >
-                            "{query}"
-                          </Text>
-                        </LinearGradient>
+                            <Text
+                              className="font-bold text-base text-white"
+                              style={{ fontFamily: "Jost-Medium" }}
+                            >
+                              "{query}"
+                            </Text>
+                          </LinearGradient>
+                        ) : (
+                          /* INACTIVE: Transparent with Border */
+                          <View
+                            style={{
+                              borderRadius: 999,
+                              marginRight: 10,
+                              marginBottom: 12,
+                              paddingVertical: 12,
+                              paddingHorizontal: 22,
+                              borderWidth: 1.5,
+                              borderColor: "#666",
+                              backgroundColor: "rgba(255,255,255,0.05)",
+                            }}
+                          >
+                            <Text
+                              className="font-bold text-base text-gray-400"
+                              style={{ fontFamily: "Jost-Medium" }}
+                            >
+                              "{query}"
+                            </Text>
+                          </View>
+                        )}
                       </TouchableOpacity>
                     )}
 
@@ -572,8 +667,8 @@ const SearchScreen = () => {
 
                     {/* ✅ INTERACTIVE FILTER BUBBLES */}
                     <View className="flex-row flex-wrap">
-                      {/* 1. QUERY BUBBLE */}
-                      {query.length > 0 && (
+                      {/* 1. QUERY BUBBLE (Only show if Active) */}
+                      {query.length > 0 && isQueryActive && (
                         <TouchableOpacity
                           onPress={removeQuery}
                           activeOpacity={0.8}
@@ -692,7 +787,7 @@ const SearchScreen = () => {
         </KeyboardAvoidingView>
       </SafeAreaView>
 
-      {/* CALENDAR MODAL */}
+      {/* CALENDAR & PREVIEW MODALS (Unchanged) */}
       <Modal visible={showCalendar} transparent={true} animationType="slide">
         <View className="flex-1 justify-end bg-black/80">
           <View className="bg-[#1E1E1E] rounded-t-3xl p-4 border-t border-white/10 h-[75%]">
@@ -788,7 +883,6 @@ const SearchScreen = () => {
         </View>
       </Modal>
 
-      {/* EVENT PREVIEW MODAL */}
       <Modal
         visible={!!selectedEvent}
         transparent={false}
@@ -804,7 +898,6 @@ const SearchScreen = () => {
               <X color="white" size={32} />
             </TouchableOpacity>
             <View className="w-full items-center">
-              {/* ✅ FIX: Enable tap & connect logic directly to card */}
               <EventFeedCard
                 id={selectedEvent.id}
                 title={selectedEvent.title}
@@ -813,7 +906,6 @@ const SearchScreen = () => {
                 image={selectedEvent.banner_url}
                 attendeesCount={100}
                 showSocial={false}
-                // Enable interaction
                 disableTap={false}
                 onOpenSocial={() => {}}
                 onPressHost={() => {
@@ -822,7 +914,6 @@ const SearchScreen = () => {
                     hostId: selectedEvent.host_id,
                   });
                 }}
-                // Navigate on Click
                 onViewEvent={() => {
                   setSelectedEvent(null);
                   navigation.navigate("EventProfile", {
@@ -832,8 +923,6 @@ const SearchScreen = () => {
                 }}
                 onOpenDiscussion={() => {}}
               />
-
-              {/* Removed Duplicate Button Here */}
             </View>
           </View>
         )}
