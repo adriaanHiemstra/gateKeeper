@@ -1,5 +1,11 @@
 // app/screens/SearchScreen.tsx
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, {
+  useState,
+  useEffect,
+  useCallback,
+  useMemo,
+  useRef,
+} from "react";
 import {
   View,
   Text,
@@ -17,6 +23,7 @@ import {
   KeyboardAvoidingView,
   Modal,
   ActivityIndicator,
+  Animated,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
@@ -28,6 +35,7 @@ import {
 } from "lucide-react-native";
 import { useNavigation } from "@react-navigation/native";
 import { CalendarList } from "react-native-calendars";
+import * as Haptics from "expo-haptics";
 
 // Components & Config
 import TopBanner from "../components/TopBanner";
@@ -138,6 +146,73 @@ const getDateRangeForFilter = (filter: string) => {
   return null;
 };
 
+// --- ANIMATED BUBBLE COMPONENT ---
+const AnimatedFilterBubble = ({
+  label,
+  color = "#fff",
+  isSelected,
+  onPress,
+}: any) => {
+  // We animate a value from 0 to 1
+  const wobbleAnim = useRef(new Animated.Value(0)).current;
+
+  const handlePress = () => {
+    // 1. Subtle Haptics
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
+    // 2. Perform Action Immediately
+    onPress();
+
+    // 3. The "Jostle" Animation
+    wobbleAnim.setValue(0);
+    Animated.timing(wobbleAnim, {
+      toValue: 1,
+      duration: 500, // Takes a moment to "settle"
+      useNativeDriver: true,
+    }).start();
+  };
+
+  // Interpolate 0 -> 1 into a Tilt/Wobble sequence
+  // "0deg" -> "-5deg" (Tilt Left) -> "5deg" (Tilt Right) -> "-2deg" (Settle) -> "0deg"
+  const spin = wobbleAnim.interpolate({
+    inputRange: [0, 0.2, 0.4, 0.6, 0.8, 1],
+    outputRange: ["0deg", "-10deg", "10deg", "-4deg", "4deg", "0deg"],
+  });
+
+  return (
+    <Animated.View
+      style={{ transform: [{ rotate: spin }], overflow: "visible", zIndex: 10 }}
+    >
+      <TouchableOpacity
+        onPress={handlePress}
+        // Increases touch area for easier tapping
+        hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+        activeOpacity={0.7}
+        style={{
+          backgroundColor: isSelected ? color : "transparent",
+          borderColor: color,
+          borderWidth: 1.5,
+          marginRight: 10,
+          marginBottom: 12,
+          paddingVertical: 12,
+          paddingHorizontal: 22,
+          borderRadius: 999,
+        }}
+      >
+        <Text
+          className="font-bold text-base"
+          style={{
+            fontFamily: "Jost-Medium",
+            color: isSelected ? "#000" : "#fff",
+          }}
+        >
+          {label}
+        </Text>
+      </TouchableOpacity>
+    </Animated.View>
+  );
+};
+
 const SearchScreen = () => {
   const navigation = useNavigation<any>();
 
@@ -147,7 +222,6 @@ const SearchScreen = () => {
   const [isExpanded, setIsExpanded] = useState(false);
 
   // Filter State
-  // ✅ Changed to an Object: { "Music": ["Techno", "House"], "Sports": [...] }
   const [availableTags, setAvailableTags] = useState<Record<string, string[]>>(
     {}
   );
@@ -172,13 +246,12 @@ const SearchScreen = () => {
       try {
         const { data, error } = await supabase
           .from("categories")
-          .select("name, group_name") // ✅ Fetch Group Name
+          .select("name, group_name")
           .order("name", { ascending: true });
 
         if (error) throw error;
 
         if (data) {
-          // ✅ Group the flat list by group_name
           const grouped = data.reduce((acc: any, item: any) => {
             const group = item.group_name || "Other";
             if (!acc[group]) acc[group] = [];
@@ -207,7 +280,6 @@ const SearchScreen = () => {
         )
         .gte("date", now);
 
-      // A. Text Search (ONLY if active)
       if (query.trim() && isQueryActive) {
         const text = query.trim();
         const searchTerms = text.split(" ");
@@ -225,7 +297,6 @@ const SearchScreen = () => {
         }
       }
 
-      // B. Category Logic
       if (selectedTags.length > 0) {
         const orConditions = selectedTags.map(
           (tag) => `category.ilike.%${tag}%`
@@ -233,7 +304,6 @@ const SearchScreen = () => {
         dbQuery = dbQuery.or(orConditions.join(","));
       }
 
-      // C. Time Filters
       let earliestStart: Date | null = null;
       let latestEnd: Date | null = null;
 
@@ -395,37 +465,20 @@ const SearchScreen = () => {
     }
   };
 
-  // --- RENDER HELPERS ---
-  const FilterBubble = ({
-    label,
-    color = "#fff",
-    isSelected,
-    onPress,
-  }: any) => (
-    <TouchableOpacity
-      onPress={onPress}
-      style={{
-        backgroundColor: isSelected ? color : "transparent",
-        borderColor: color,
-        borderWidth: 1.5,
-        marginRight: 10,
-        marginBottom: 12,
-        paddingVertical: 12,
-        paddingHorizontal: 22,
-        borderRadius: 999,
-      }}
-    >
-      <Text
-        className="font-bold text-base"
-        style={{
-          fontFamily: "Jost-Medium",
-          color: isSelected ? "#000" : "#fff",
-        }}
-      >
-        {label}
-      </Text>
-    </TouchableOpacity>
-  );
+  const visibleGroups = useMemo(() => {
+    if (!query.trim()) return availableTags;
+
+    const filtered: Record<string, string[]> = {};
+    Object.keys(availableTags).forEach((group) => {
+      const matchingTags = availableTags[group].filter((tag) =>
+        tag.toLowerCase().includes(query.toLowerCase())
+      );
+      if (matchingTags.length > 0) {
+        filtered[group] = matchingTags;
+      }
+    });
+    return filtered;
+  }, [availableTags, query]);
 
   const renderEventItem = ({ item }: { item: any }) => (
     <TouchableOpacity
@@ -466,23 +519,6 @@ const SearchScreen = () => {
       </LinearGradient>
     </TouchableOpacity>
   );
-
-  // ✅ New Logic: Calculate Visible Groups
-  // If searching, we filter inside the groups. If a group has no matching tags, it disappears.
-  const visibleGroups = useMemo(() => {
-    if (!query.trim()) return availableTags;
-
-    const filtered: Record<string, string[]> = {};
-    Object.keys(availableTags).forEach((group) => {
-      const matchingTags = availableTags[group].filter((tag) =>
-        tag.toLowerCase().includes(query.toLowerCase())
-      );
-      if (matchingTags.length > 0) {
-        filtered[group] = matchingTags;
-      }
-    });
-    return filtered;
-  }, [availableTags, query]);
 
   return (
     <View className="flex-1 bg-[#121212]">
@@ -547,13 +583,13 @@ const SearchScreen = () => {
                     paddingTop: 10,
                     paddingHorizontal: 16,
                   }}
-                  keyboardShouldPersistTaps="handled"
+                  keyboardShouldPersistTaps="always" // Ensures tap registers immediately
                 >
                   <Text className="text-gray-400 text-sm font-bold uppercase mb-4 ml-1">
                     Explore Interests
                   </Text>
 
-                  {/* 1. DYNAMIC SEARCH BUBBLE (The Toggle) */}
+                  {/* 1. DYNAMIC SEARCH BUBBLE */}
                   {query.length > 0 && (
                     <View className="mb-6 flex-row">
                       <TouchableOpacity onPress={toggleQueryActive}>
@@ -601,17 +637,21 @@ const SearchScreen = () => {
                   {/* 2. CATEGORIZED STRIPS */}
                   {Object.keys(visibleGroups).length > 0 ? (
                     Object.keys(visibleGroups).map((group) => (
-                      <View key={group} className="mb-6">
+                      <View key={group} className="mb-3">
                         <Text className="text-gray-500 text-xs font-bold uppercase mb-3 ml-1 tracking-widest">
                           {group}
                         </Text>
                         <ScrollView
                           horizontal
                           showsHorizontalScrollIndicator={false}
-                          keyboardShouldPersistTaps="handled"
+                          keyboardShouldPersistTaps="always"
+                          contentContainerStyle={{
+                            paddingVertical: 5,
+                            paddingHorizontal: 4,
+                          }}
                         >
                           {visibleGroups[group].map((tag) => (
-                            <FilterBubble
+                            <AnimatedFilterBubble
                               key={tag}
                               label={tag}
                               isSelected={selectedTags.includes(tag)}
@@ -638,7 +678,7 @@ const SearchScreen = () => {
                   </Text>
                   <View className="flex-row flex-wrap">
                     {TIME_FILTERS.map((time) => (
-                      <FilterBubble
+                      <AnimatedFilterBubble
                         key={time}
                         label={time}
                         color="#fff"
@@ -660,7 +700,7 @@ const SearchScreen = () => {
                         className="mr-2"
                       />
                       <Text
-                        className={`font-bold text-base ${
+                        className={`font-bold ml-1 text-base ${
                           isCustomDateActive ? "text-black" : "text-[#ccc]"
                         }`}
                       >
@@ -673,7 +713,7 @@ const SearchScreen = () => {
                 </ScrollView>
               </View>
             ) : (
-              // RESULT LIST (Unchanged)
+              // RESULT LIST
               <FlatList
                 data={results}
                 keyExtractor={(item) => item.id}
@@ -688,9 +728,7 @@ const SearchScreen = () => {
                       {results.length > 0 ? "Upcoming Events" : ""}
                     </Text>
 
-                    {/* INTERACTIVE FILTER BUBBLES */}
                     <View className="flex-row flex-wrap">
-                      {/* Query Bubble */}
                       {query.length > 0 && isQueryActive && (
                         <TouchableOpacity
                           onPress={removeQuery}
@@ -723,7 +761,7 @@ const SearchScreen = () => {
                         </TouchableOpacity>
                       )}
 
-                      {/* Category Bubbles */}
+                      {/* We use standard Touchable here */}
                       {selectedTags.map((tag) => {
                         const color = GET_CATEGORY_COLOR(tag);
                         return (
@@ -751,7 +789,6 @@ const SearchScreen = () => {
                         );
                       })}
 
-                      {/* Time Bubbles */}
                       {activeTimeFilters.map((time) => (
                         <TouchableOpacity
                           key={time}
@@ -768,7 +805,6 @@ const SearchScreen = () => {
                         </TouchableOpacity>
                       ))}
 
-                      {/* Custom Date Bubble */}
                       {isCustomDateActive && startDate && (
                         <TouchableOpacity
                           onPress={() => {
