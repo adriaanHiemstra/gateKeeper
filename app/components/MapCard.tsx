@@ -98,12 +98,14 @@ const MapCard = ({ event, onClose, onViewEvent }: MapCardProps) => {
                 {event.title}
               </Text>
               <View className="flex-row items-center">
-                <Clock color="#FA8900" size={14} className="mr-1" />
-                <Text className="text-gray-400 text-sm">{event.time}</Text>
+                <Clock color="#FA8900" size={14} className="ml-2" />
+                <Text className="text-gray-400 text-sm ml-2">{event.time}</Text>
               </View>
               <View className="flex-row items-center mt-1">
-                <MapPin color="#FA8900" size={14} className="mr-1" />
-                <Text className="text-gray-400 text-sm">{event.location}</Text>
+                <MapPin color="#FA8900" size={14} className="ml-2" />
+                <Text className="text-gray-400 text-sm ml-2">
+                  {event.location}
+                </Text>
               </View>
             </View>
           </View>

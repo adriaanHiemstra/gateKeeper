@@ -1,6 +1,6 @@
 // app/screens/CreateEventScreen.tsx
 
-import React, { useState, useMemo, useEffect } from "react"; // ✅ Added useEffect
+import React, { useState, useMemo, useEffect } from "react";
 import {
   View,
   Text,
@@ -47,7 +47,8 @@ import { Video, ResizeMode } from "expo-av";
 import { supabase } from "../../lib/supabase";
 import { uploadImage } from "../../lib/upload";
 import { useAuth } from "../../context/AuthContext";
-
+import { GooglePlacesAutocomplete } from "react-native-google-places-autocomplete";
+// You can remove import * as Location from "expo-location" if you want!
 // Components
 import HostTopBanner from "../../components/HostTopBanner";
 import { bannerGradient, electricGradient } from "../../styles/colours";
@@ -151,9 +152,6 @@ const MOCK_LOCATIONS = [
   "Kirstenbosch Gardens, Newlands",
 ];
 
-// ❌ REMOVED: const AVAILABLE_TAGS = [...]
-// We now fetch these from the DB!
-
 // --- TYPES ---
 type TicketTier = {
   name: string;
@@ -194,9 +192,11 @@ const CreateEventScreen = () => {
   const [endDate, setEndDate] = useState("");
   const [endTime, setEndTime] = useState("");
   const [location, setLocation] = useState("");
+  const [locationLat, setLocationLat] = useState<number>(0); // ✅ NEW
+  const [locationLng, setLocationLng] = useState<number>(0); // ✅ NEW
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
 
-  // ✅ NEW: State for DB categories
+  // State for DB categories
   const [availableTags, setAvailableTags] = useState<string[]>([]);
 
   const [activeDateModal, setActiveDateModal] = useState<
@@ -214,7 +214,7 @@ const CreateEventScreen = () => {
 
   const [loading, setLoading] = useState(false);
 
-  // ✅ FETCH CATEGORIES ON LOAD
+  // FETCH CATEGORIES ON LOAD
   useEffect(() => {
     const fetchCategories = async () => {
       const { data, error } = await supabase
@@ -338,6 +338,7 @@ const CreateEventScreen = () => {
       );
   };
 
+  // ✅ UPDATED PUBLISH FUNCTION WITH GEOCODING
   const handlePublish = async () => {
     if (
       !title ||
@@ -356,16 +357,26 @@ const CreateEventScreen = () => {
     setLoading(true);
 
     try {
+      // 1. GEOCODING (Convert Address to Coords)
+      let finalLat = 0;
+      let finalLng = 0;
+
+      // 2. UPLOAD IMAGES
       const uploadedUrls = await Promise.all(
         mediaItems.map((item) => uploadImage(item.uri, "event-banners"))
       );
 
+      // 3. PREPARE DATES
       const startISO = new Date(`${startDate}T${startTime}:00`).toISOString();
       const endISO =
         endDate && endTime
           ? new Date(`${endDate}T${endTime}:00`).toISOString()
           : null;
 
+      // 4. INSERT TO DB (With Coordinates!)
+      // Inside handlePublish...
+
+      // INSERT TO DB
       const { data: eventData, error: eventError } = await supabase
         .from("events")
         .insert({
@@ -375,6 +386,8 @@ const CreateEventScreen = () => {
           date: startISO,
           end_date: endISO,
           location_text: location,
+          lat: locationLat, // ✅ Uses the state we got from Google
+          lng: locationLng, // ✅ Uses the state we got from Google
           banner_url: uploadedUrls[0],
           images: uploadedUrls,
           tags: selectedTags,
@@ -388,6 +401,7 @@ const CreateEventScreen = () => {
 
       const newEventId = eventData.id;
 
+      // 5. INSERT TICKETS
       if (tickets.length > 0) {
         const tiersToInsert = tickets.map((t) => ({
           event_id: newEventId,
@@ -589,8 +603,7 @@ const CreateEventScreen = () => {
             multiline={true}
           />
 
-          {/* ... TICKET TIERS & SWITCH (Unchanged) ... */}
-          {/* (Kept your existing ticket logic here) */}
+          {/* ... TICKET TIERS & SWITCH ... */}
           <View className="mb-8">
             <View className="flex-row justify-between items-end mb-4">
               <Text className="text-white text-xl font-bold">Ticket Tiers</Text>
@@ -705,10 +718,7 @@ const CreateEventScreen = () => {
         </View>
       </SafeAreaView>
 
-      {/* --- MODALS (Ticket, Date, Time, Location) --- */}
-      {/* (Kept your existing modals) */}
-
-      {/* --- CATEGORY PICKER MODAL (UPDATED) --- */}
+      {/* --- MODALS --- */}
       <Modal visible={showCategoryPicker} transparent animationType="slide">
         <View className="flex-1 justify-end bg-black/80">
           <View className="bg-[#1E1E1E] rounded-t-3xl h-[80%] overflow-hidden">
@@ -730,7 +740,6 @@ const CreateEventScreen = () => {
                 />
               </View>
             </View>
-            {/* ✅ UPDATED: Use availableTags state from DB */}
             <FlatList
               data={availableTags.filter((t) =>
                 t.toLowerCase().includes(tagQuery.toLowerCase())
@@ -760,46 +769,83 @@ const CreateEventScreen = () => {
         </View>
       </Modal>
 
-      {/* ... OTHER MODALS ... */}
+      {/* LOCATION PICKER (Simple Text Search) */}
+      {/* LOCATION PICKER MODAL */}
+      {/* LOCATION PICKER MODAL */}
+      {/* GOOGLE PLACES LOCATION PICKER MODAL */}
       <Modal visible={showLocationPicker} transparent animationType="slide">
         <View className="flex-1 bg-[#1E1E1E]">
-          <SafeAreaView className="flex-1">
-            <View className="flex-row items-center px-4 py-4 border-b border-white/10">
+          <SafeAreaView className="flex-1 pt-6 px-4">
+            {/* Header / Back Button */}
+            <View className="flex-row items-center mb-4">
               <TouchableOpacity
                 onPress={() => setShowLocationPicker(false)}
-                className="mr-4"
+                className="bg-white/10 p-2 rounded-full mr-4"
               >
                 <ArrowLeft color="white" size={24} />
               </TouchableOpacity>
-              <View className="flex-1 flex-row items-center bg-black/40 rounded-xl px-4 h-12">
-                <Search color="#999" size={20} className="mr-2" />
-                <TextInput
-                  placeholder="Search..."
-                  placeholderTextColor="#666"
-                  value={locQuery}
-                  onChangeText={handleLocationSearch}
-                  autoFocus
-                  className="flex-1 text-white text-lg font-medium"
-                />
-              </View>
+              <Text className="text-white text-xl font-bold">
+                Find Location
+              </Text>
             </View>
-            <FlatList
-              data={locResults}
-              keyExtractor={(item) => item}
-              renderItem={({ item }) => (
-                <TouchableOpacity
-                  onPress={() => {
-                    setLocation(item);
-                    setShowLocationPicker(false);
-                  }}
-                  className="flex-row items-center p-4 border-b border-white/5"
-                >
-                  <View className="bg-white/10 p-2 rounded-full mr-3">
-                    <MapPin color="white" size={20} />
-                  </View>
-                  <Text className="text-white text-lg font-medium">{item}</Text>
-                </TouchableOpacity>
-              )}
+
+            {/* Google Places Autocomplete Component */}
+            <GooglePlacesAutocomplete
+              placeholder="Search for a venue or address..."
+              minLength={2}
+              fetchDetails={true}
+              keyboardShouldPersistTaps="handled"
+              onFail={(error) => console.error("Google Places Error:", error)} // 👈 ADD THIS
+              onPress={(data, details = null) => {
+                // When the user taps a result, we save everything instantly
+                setLocation(data.description);
+                if (details?.geometry?.location) {
+                  setLocationLat(details.geometry.location.lat);
+                  setLocationLng(details.geometry.location.lng);
+                }
+                setShowLocationPicker(false);
+              }}
+              query={{
+                key: "AIzaSyC8OxMEXIbnZoXRf2fwUMtBGLWqqkB7lgQ",
+                language: "en",
+                components: "country:za", // 🇿🇦 Restricts search to South Africa (optional)
+              }}
+              styles={{
+                container: { flex: 1 },
+                textInputContainer: {
+                  backgroundColor: "rgba(0,0,0,0.4)",
+                  borderRadius: 12,
+                  marginBottom: 10,
+                },
+                textInput: {
+                  backgroundColor: "transparent",
+                  color: "#fff",
+                  fontSize: 16,
+                  fontFamily: "Jost-Medium",
+                },
+                listView: {
+                  backgroundColor: "#1E1E1E",
+                  zIndex: 100, // Forces it above other elements
+                  elevation: 10, // Shadow for Android
+                },
+                row: {
+                  backgroundColor: "transparent",
+                  padding: 16,
+                  borderBottomWidth: 1,
+                  borderColor: "rgba(255,255,255,0.05)",
+                },
+                description: {
+                  color: "#fff",
+                  fontSize: 16,
+                },
+                separator: {
+                  backgroundColor: "transparent",
+                },
+              }}
+              textInputProps={{
+                placeholderTextColor: "#666",
+                autoFocus: true,
+              }}
             />
           </SafeAreaView>
         </View>
@@ -808,10 +854,7 @@ const CreateEventScreen = () => {
       {/* Ticket Modal & Date/Time Modals */}
       <Modal visible={showTicketModal} transparent animationType="slide">
         <View className="flex-1 justify-end bg-black/60">
-          {/* ... Ticket Modal Content (Same as before) ... */}
-          {/* Simplified for brevity as it was unchanged */}
           <View className="h-[85%] bg-[#121212] rounded-t-[40px] overflow-hidden border-t border-white/20 shadow-2xl shadow-purple-500/20">
-            {/* Header */}
             <LinearGradient
               colors={["#240b36", "#121212"]}
               className="px-6 pt-8 pb-6 border-b border-white/5"
@@ -834,7 +877,6 @@ const CreateEventScreen = () => {
               </View>
             </LinearGradient>
 
-            {/* Form */}
             <KeyboardAwareScrollView
               className="flex-1 px-6 pt-8"
               contentContainerStyle={{ paddingBottom: 100 }}
@@ -842,7 +884,6 @@ const CreateEventScreen = () => {
               extraScrollHeight={100}
               keyboardShouldPersistTaps="handled"
             >
-              {/* Name Input */}
               <View className="mb-6">
                 <Text className="text-gray-400 font-bold mb-3 ml-2 uppercase tracking-wide text-xs">
                   Ticket Name
@@ -863,7 +904,6 @@ const CreateEventScreen = () => {
                 </View>
               </View>
 
-              {/* Price & Quantity */}
               <View className="flex-row gap-4 mb-6">
                 <View className="flex-1">
                   <Text className="text-gray-400 font-bold mb-3 ml-2 uppercase tracking-wide text-xs">
@@ -908,7 +948,6 @@ const CreateEventScreen = () => {
                 </View>
               </View>
 
-              {/* Status */}
               <View className="mb-8">
                 <Text className="text-gray-400 font-bold mb-3 ml-2 uppercase tracking-wide text-xs">
                   Availability
@@ -971,7 +1010,6 @@ const CreateEventScreen = () => {
               </View>
             </KeyboardAwareScrollView>
 
-            {/* Footer */}
             <View className="absolute bottom-0 left-0 right-0 p-6 bg-[#121212] border-t border-white/10">
               <View className="flex-row gap-4">
                 {editingTicketIndex !== null && (

@@ -44,6 +44,9 @@ import { KeyboardAwareScrollView } from "react-native-keyboard-aware-scroll-view
 import { Calendar as RNCalendar } from "react-native-calendars";
 import { Video, ResizeMode } from "expo-av";
 
+// Google Places
+import { GooglePlacesAutocomplete } from "react-native-google-places-autocomplete";
+
 // Backend
 import { supabase } from "../../lib/supabase";
 import { uploadImage } from "../../lib/upload";
@@ -141,30 +144,6 @@ const ALL_TIMES = Array.from({ length: 48 }).map((_, i) => {
   return `${h.toString().padStart(2, "0")}:${m}`;
 });
 
-const MOCK_LOCATIONS = [
-  "Clifton 4th Beach, Cape Town",
-  "Green Point Stadium, Cape Town",
-  "The Power Station, CBD",
-  "Shimmy Beach Club, V&A Waterfront",
-  "Kirstenbosch Gardens, Newlands",
-];
-
-const AVAILABLE_TAGS = [
-  "Techno",
-  "House",
-  "Live Music",
-  "Rock",
-  "Jazz",
-  "Sports",
-  "Outdoors",
-  "Beach",
-  "Festival",
-  "Comedy",
-  "Theatre",
-  "Gaming",
-  "Networking",
-];
-
 type EditEventRouteProp = RouteProp<RootStackParamList, "EditEvent">;
 
 const EditEventScreen = () => {
@@ -179,8 +158,14 @@ const EditEventScreen = () => {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [isPublic, setIsPublic] = useState(true);
+
+  // Location States (Added Lat/Lng logic)
   const [location, setLocation] = useState("");
+  const [locationLat, setLocationLat] = useState<number>(0);
+  const [locationLng, setLocationLng] = useState<number>(0);
+
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [availableTags, setAvailableTags] = useState<string[]>([]); // Dynamic Categories
 
   // Date/Time State
   const [startDate, setStartDate] = useState("");
@@ -222,7 +207,6 @@ const EditEventScreen = () => {
   >(null);
   const [showLocationPicker, setShowLocationPicker] = useState(false);
   const [showCategoryPicker, setShowCategoryPicker] = useState(false);
-  const [locQuery, setLocQuery] = useState("");
   const [tagQuery, setTagQuery] = useState("");
 
   const todayDateString = new Date().toISOString().split("T")[0];
@@ -242,7 +226,17 @@ const EditEventScreen = () => {
   // --- 1. FETCH DATA ---
   useEffect(() => {
     fetchEventData();
+    fetchCategories();
   }, []);
+
+  // ✅ NEW: Fetch dynamic categories from Supabase
+  const fetchCategories = async () => {
+    const { data } = await supabase
+      .from("categories")
+      .select("name")
+      .order("name", { ascending: true });
+    if (data) setAvailableTags(data.map((cat: any) => cat.name));
+  };
 
   const fetchEventData = async () => {
     try {
@@ -256,7 +250,12 @@ const EditEventScreen = () => {
 
       setTitle(data.title);
       setDescription(data.description);
-      setLocation(data.location_text);
+
+      // ✅ Handle Coordinates safely
+      setLocation(data.location_text || "");
+      setLocationLat(data.lat || 0);
+      setLocationLng(data.lng || 0);
+
       setIsPublic(data.is_public);
       setSelectedTags(data.tags || []);
 
@@ -306,7 +305,6 @@ const EditEventScreen = () => {
         setTickets(formattedTiers);
       }
     } catch (error: any) {
-      console.log(error);
       Alert.alert("Error", "Could not load event.");
       navigation.goBack();
     } finally {
@@ -363,7 +361,7 @@ const EditEventScreen = () => {
     setShowMediaOptions(false);
   };
 
-  // --- HANDLERS (Tickets) ---
+  // --- HANDLERS (Tickets & Tags) ---
   const openTicketModal = (index?: number) => {
     if (index !== undefined) {
       setEditingTicketIndex(index);
@@ -417,14 +415,11 @@ const EditEventScreen = () => {
     }
   };
 
-  const handleLocationSearch = (text: string) => {
-    setLocQuery(text);
-  };
-
   // --- MAIN SAVE HANDLER ---
   const handleSave = async () => {
     setSaving(true);
     try {
+      // 1. Process Images
       const processedImages = await Promise.all(
         mediaItems.map(async (item) => {
           if (item.uri.startsWith("http")) return item.uri;
@@ -432,29 +427,35 @@ const EditEventScreen = () => {
         })
       );
 
+      // 2. Prep Dates
       const startISO = new Date(`${startDate}T${startTime}:00`).toISOString();
       const endISO =
         endDate && endTime
           ? new Date(`${endDate}T${endTime}:00`).toISOString()
           : null;
 
+      // 3. Update DB (✅ Now includes lat/lng and category logic!)
       const { error: eventError } = await supabase
         .from("events")
         .update({
           title,
           description,
           location_text: location,
+          lat: locationLat,
+          lng: locationLng,
           date: startISO,
           end_date: endISO,
           is_public: isPublic,
           tags: selectedTags,
+          category: selectedTags[0] || "Other", // Sync category
           images: processedImages,
-          banner_url: processedImages[0],
+          banner_url: processedImages[0] || null,
         })
         .eq("id", eventId);
 
       if (eventError) throw eventError;
 
+      // 4. Ticket Deletions
       if (deletedTicketIds.length > 0) {
         const { error: deleteError } = await supabase
           .from("ticket_tiers")
@@ -463,20 +464,16 @@ const EditEventScreen = () => {
         if (deleteError) throw deleteError;
       }
 
+      // 5. Ticket Updates/Inserts
       if (tickets.length > 0) {
-        // ✅ FIX: Construct payload with ID generation on the fly
-        const tiersData = tickets.map((t) => {
-          const payload: any = {
-            event_id: eventId,
-            name: t.name,
-            price: parseFloat(t.price),
-            quantity_total: parseInt(t.quantity),
-            is_active: t.active,
-            // ✅ KEY FIX: Use existing ID or generate a new UUID
-            id: t.id || generateUUID(),
-          };
-          return payload;
-        });
+        const tiersData = tickets.map((t) => ({
+          event_id: eventId,
+          name: t.name,
+          price: parseFloat(t.price),
+          quantity_total: parseInt(t.quantity),
+          is_active: t.active,
+          id: t.id || generateUUID(),
+        }));
 
         const { error: tierError } = await supabase
           .from("ticket_tiers")
@@ -649,7 +646,7 @@ const EditEventScreen = () => {
           />
           <SelectorButton
             icon={<Tag color="white" size={20} />}
-            value={selectedTags.join(", ")}
+            value={selectedTags.length > 0 ? selectedTags.join(", ") : ""}
             placeholder="Categories"
             onPress={() => setShowCategoryPicker(true)}
           />
@@ -761,7 +758,9 @@ const EditEventScreen = () => {
         </View>
       </SafeAreaView>
 
-      {/* --- MEDIA OPTIONS MODAL --- */}
+      {/* --- MODALS --- */}
+
+      {/* Media Options Modal */}
       <Modal visible={showMediaOptions} transparent animationType="slide">
         <View className="flex-1 justify-end bg-black/60">
           <View className="bg-[#1E1E1E] rounded-t-3xl p-6 pb-10">
@@ -827,8 +826,122 @@ const EditEventScreen = () => {
         </View>
       </Modal>
 
-      {/* --- TICKET MODAL --- */}
+      {/* Google Places Location Modal */}
+      <Modal visible={showLocationPicker} transparent animationType="slide">
+        <View className="flex-1 bg-[#1E1E1E]">
+          <SafeAreaView className="flex-1 pt-6 px-4">
+            <View className="flex-row items-center mb-4">
+              <TouchableOpacity
+                onPress={() => setShowLocationPicker(false)}
+                className="bg-white/10 p-2 rounded-full mr-4"
+              >
+                <ArrowLeft color="white" size={24} />
+              </TouchableOpacity>
+              <Text className="text-white text-xl font-bold">
+                Update Location
+              </Text>
+            </View>
+            <GooglePlacesAutocomplete
+              placeholder="Search for a new venue or address..."
+              minLength={2}
+              fetchDetails={true}
+              keyboardShouldPersistTaps="handled"
+              onPress={(data, details = null) => {
+                setLocation(data.description);
+                if (details?.geometry?.location) {
+                  setLocationLat(details.geometry.location.lat);
+                  setLocationLng(details.geometry.location.lng);
+                }
+                setShowLocationPicker(false);
+              }}
+              query={{
+                key: "AIzaSyC8OxMEXIbnZoXRf2fwUMtBGLWqqkB7lgQ", // Uses the valid key
+                language: "en",
+                components: "country:za",
+              }}
+              styles={{
+                container: { flex: 1 },
+                textInputContainer: {
+                  backgroundColor: "rgba(0,0,0,0.4)",
+                  borderRadius: 12,
+                  marginBottom: 10,
+                },
+                textInput: {
+                  backgroundColor: "transparent",
+                  color: "#fff",
+                  fontSize: 16,
+                  fontFamily: "Jost-Medium",
+                },
+                listView: { backgroundColor: "#1E1E1E", zIndex: 1000 },
+                row: {
+                  backgroundColor: "#1E1E1E",
+                  padding: 16,
+                  borderBottomWidth: 1,
+                  borderColor: "rgba(255,255,255,0.05)",
+                },
+                description: { color: "#fff", fontSize: 16 },
+                separator: { backgroundColor: "transparent" },
+              }}
+              textInputProps={{ placeholderTextColor: "#666", autoFocus: true }}
+            />
+          </SafeAreaView>
+        </View>
+      </Modal>
+
+      {/* Categories Modal */}
+      <Modal visible={showCategoryPicker} transparent animationType="slide">
+        <View className="flex-1 justify-end bg-black/80">
+          <View className="bg-[#1E1E1E] rounded-t-3xl h-[80%] overflow-hidden">
+            <View className="flex-row items-center justify-between px-4 py-4 border-b border-white/10">
+              <Text className="text-white text-xl font-bold">Categories</Text>
+              <TouchableOpacity onPress={() => setShowCategoryPicker(false)}>
+                <Text className="text-purple-400 font-bold text-lg">Done</Text>
+              </TouchableOpacity>
+            </View>
+            <View className="px-4 py-2">
+              <View className="flex-row items-center bg-black/40 rounded-xl px-4 h-12">
+                <Search color="#999" size={20} className="mr-2" />
+                <TextInput
+                  placeholder="Search categories..."
+                  placeholderTextColor="#666"
+                  value={tagQuery}
+                  onChangeText={setTagQuery}
+                  className="flex-1 text-white text-lg font-medium"
+                />
+              </View>
+            </View>
+            <FlatList
+              data={availableTags.filter((t) =>
+                t.toLowerCase().includes(tagQuery.toLowerCase())
+              )}
+              keyExtractor={(item) => item}
+              contentContainerStyle={{ paddingBottom: 40 }}
+              renderItem={({ item }) => {
+                const isSelected = selectedTags.includes(item);
+                return (
+                  <TouchableOpacity
+                    onPress={() => toggleTag(item)}
+                    className="flex-row items-center justify-between p-4 border-b border-white/5"
+                  >
+                    <Text
+                      className={`text-lg font-bold ${
+                        isSelected ? "text-purple-300" : "text-white"
+                      }`}
+                    >
+                      {item}
+                    </Text>
+                    {isSelected && <Check color="#D087FF" size={20} />}
+                  </TouchableOpacity>
+                );
+              }}
+            />
+          </View>
+        </View>
+      </Modal>
+
+      {/* Ticket Modal */}
       <Modal visible={showTicketModal} transparent animationType="slide">
+        {/* Same UI block as CreateEventScreen */}
         <View className="flex-1 justify-end bg-black/60">
           <View className="h-[85%] bg-[#121212] rounded-t-[40px] overflow-hidden border-t border-white/20 shadow-2xl shadow-purple-500/20">
             <LinearGradient
@@ -1015,7 +1128,7 @@ const EditEventScreen = () => {
         </View>
       </Modal>
 
-      {/* --- DATE/TIME/LOCATION MODALS --- */}
+      {/* Date/Time Modals */}
       <Modal visible={!!activeDateModal} transparent animationType="slide">
         <View className="flex-1 justify-end bg-black/80">
           <View className="bg-[#1E1E1E] rounded-t-3xl p-4 h-[60%]">
@@ -1023,8 +1136,11 @@ const EditEventScreen = () => {
               <Text className="text-white text-2xl font-bold">
                 {activeDateModal === "start" ? "Start Date" : "End Date"}
               </Text>
-              <TouchableOpacity onPress={() => setActiveDateModal(null)}>
-                <Text className="text-purple-400 font-bold text-lg">Done</Text>
+              <TouchableOpacity
+                onPress={() => setActiveDateModal(null)}
+                className="bg-white/10 p-2 rounded-full"
+              >
+                <X color="white" size={24} />
               </TouchableOpacity>
             </View>
             <RNCalendar
@@ -1035,9 +1151,15 @@ const EditEventScreen = () => {
                 setActiveDateModal(null);
               }}
               theme={{
+                backgroundColor: "#1E1E1E",
                 calendarBackground: "#1E1E1E",
-                dayTextColor: "#fff",
+                dayTextColor: "#ffffff",
                 todayTextColor: "#D087FF",
+                selectedDayBackgroundColor: "#D087FF",
+                selectedDayTextColor: "#ffffff",
+                monthTextColor: "white",
+                arrowColor: "#D087FF",
+                textDisabledColor: "#444",
               }}
             />
           </View>
@@ -1046,13 +1168,16 @@ const EditEventScreen = () => {
 
       <Modal visible={!!activeTimeModal} transparent animationType="slide">
         <View className="flex-1 justify-end bg-black/80">
-          <View className="bg-[#1E1E1E] rounded-t-3xl p-4 h-[50%]">
+          <View className="bg-[#1E1E1E] rounded-t-3xl p-4 h-[60%]">
             <View className="flex-row justify-between items-center mb-4 px-2">
               <Text className="text-white text-2xl font-bold">
                 {activeTimeModal === "start" ? "Start Time" : "End Time"}
               </Text>
-              <TouchableOpacity onPress={() => setActiveTimeModal(null)}>
-                <Text className="text-purple-400 font-bold text-lg">Done</Text>
+              <TouchableOpacity
+                onPress={() => setActiveTimeModal(null)}
+                className="bg-white/10 p-2 rounded-full"
+              >
+                <X color="white" size={24} />
               </TouchableOpacity>
             </View>
             <FlatList
@@ -1065,56 +1190,13 @@ const EditEventScreen = () => {
                     else setEndTime(item);
                     setActiveTimeModal(null);
                   }}
-                  className="p-4 border-b border-white/5"
+                  className="p-4 border-b border-white/5 flex-row justify-between"
                 >
-                  <Text className="text-white text-center text-lg">{item}</Text>
+                  <Text className="text-white text-lg font-bold">{item}</Text>
                 </TouchableOpacity>
               )}
             />
           </View>
-        </View>
-      </Modal>
-
-      <Modal visible={showLocationPicker} transparent>
-        <View className="flex-1 bg-[#121212] pt-20 px-4">
-          <TouchableOpacity onPress={() => setShowLocationPicker(false)}>
-            <Text className="text-white mb-4">Close</Text>
-          </TouchableOpacity>
-          <FlatList
-            data={MOCK_LOCATIONS}
-            renderItem={({ item }) => (
-              <TouchableOpacity
-                onPress={() => {
-                  setLocation(item);
-                  setShowLocationPicker(false);
-                }}
-                className="p-4 border-b border-white/10"
-              >
-                <Text className="text-white">{item}</Text>
-              </TouchableOpacity>
-            )}
-          />
-        </View>
-      </Modal>
-      <Modal visible={showCategoryPicker} transparent>
-        <View className="flex-1 bg-[#121212] pt-20 px-4">
-          <TouchableOpacity onPress={() => setShowCategoryPicker(false)}>
-            <Text className="text-white mb-4">Close</Text>
-          </TouchableOpacity>
-          <FlatList
-            data={AVAILABLE_TAGS}
-            renderItem={({ item }) => (
-              <TouchableOpacity
-                onPress={() => {
-                  toggleTag(item);
-                }}
-                className="p-4 border-b border-white/10 flex-row justify-between"
-              >
-                <Text className="text-white">{item}</Text>
-                {selectedTags.includes(item) && <Check color="#D087FF" />}
-              </TouchableOpacity>
-            )}
-          />
         </View>
       </Modal>
     </View>
