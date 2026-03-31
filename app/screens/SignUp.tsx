@@ -55,7 +55,7 @@ const SignUp = () => {
       password: password,
       options: {
         data: {
-          full_name: name, // Saves name to user metadata
+          full_name: name,
         },
       },
     });
@@ -65,17 +65,11 @@ const SignUp = () => {
     if (error) {
       Alert.alert("Sign Up Failed", error.message);
     } else {
-      // Default Supabase behavior is to require email confirmation.
-      // If you disabled "Confirm Email" in Supabase dashboard, you can log them in directly.
-      // For now, we assume confirmation is required:
-      Alert.alert(
-        "Success!",
-        "Account created. Please check your email to verify."
-      );
-      navigation.navigate("Login");
+      // 🚀 BOOM. Straight into the gamified flow.
+      // We use .replace() so they can't swipe back to the signup screen
+      navigation.replace("Onboarding");
     }
   };
-
   return (
     <View className="flex-1 bg-[#121212]">
       <LinearGradient {...bannerGradient} style={StyleSheet.absoluteFill} />
@@ -119,7 +113,7 @@ const SignUp = () => {
                   placeholderTextColor="#666"
                   value={name}
                   onChangeText={setName}
-                  className="flex-1 text-white text-lg font-medium h-full"
+                  className="flex-1 ml-1 text-white text-lg font-medium h-full"
                   style={{ fontFamily: "Jost-Medium" }}
                 />
               </View>
@@ -139,7 +133,7 @@ const SignUp = () => {
                   onChangeText={setEmail}
                   keyboardType="email-address"
                   autoCapitalize="none"
-                  className="flex-1 text-white text-lg font-medium h-full"
+                  className="flex-1 ml-2 text-white text-lg font-medium h-full"
                   style={{ fontFamily: "Jost-Medium" }}
                 />
               </View>
@@ -158,7 +152,7 @@ const SignUp = () => {
                   value={password}
                   onChangeText={setPassword}
                   secureTextEntry={!showPassword}
-                  className="flex-1 text-white text-lg font-medium h-full"
+                  className="flex-1 ml-2 text-white text-lg font-medium h-full"
                   style={{ fontFamily: "Jost-Medium" }}
                 />
                 <TouchableOpacity

@@ -10,6 +10,7 @@ import Search from "../screens/Search";
 // Auth
 import SignUp from "../screens/SignUp";
 import Login from "../screens/Login";
+import Onboarding from "../screens/Onboarding";
 import ForgotPassword from "../screens/ForgotPassword";
 import ResetPassword from "../screens/ResetPassword";
 
@@ -147,6 +148,7 @@ export default function AppNavigator() {
         {/* Auth */}
         <Stack.Screen name="Login" component={Login} />
         <Stack.Screen name="SignUp" component={SignUp} />
+        <Stack.Screen name="Onboarding" component={Onboarding} />
         <Stack.Screen name="ForgotPassword" component={ForgotPassword} />
         <Stack.Screen name="ResetPassword" component={ResetPassword} />
 

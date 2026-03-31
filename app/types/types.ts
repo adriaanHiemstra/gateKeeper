@@ -9,6 +9,7 @@ export type RootStackParamList = {
   // Auth screens
   Login: undefined;
   SignUp: undefined;
+  Onboarding: undefined;
   ForgotPassword: undefined;
   ResetPassword: undefined;
 
@@ -58,7 +59,7 @@ export type RootStackParamList = {
     ticketTierName?: string;
     ticketPrice?: string;
   };
-  EventHostProfile: undefined;
+  EventHostProfile: { hostId: string };
   PurchaseTicket: {
     eventId: string;
     eventName: string;

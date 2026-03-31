@@ -57,12 +57,60 @@ const PromoteEventScreen = () => {
 
       if (error) throw error;
       setEventData(data);
-      setIsBoosted(data.is_boosted || false);
-    } catch (err) {
-      console.log(err);
+
+      // ✅ NEW: Check if the boost is still actively valid
+      if (data.is_boosted && data.boosted_until) {
+        const now = new Date();
+        const expiryDate = new Date(data.boosted_until);
+
+        if (expiryDate > now) {
+          setIsBoosted(true); // Still within 24 hours!
+        } else {
+          setIsBoosted(false); // 24 hours have passed!
+        }
+      } else {
+        setIsBoosted(false);
+      }
+    } catch (error) {
+      console.error("Fetch Event Error:", error);
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleBoost = async () => {
+    Alert.alert(
+      "Confirm Boost",
+      "Spend R 500 to boost this event for 24 hours?",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Boost",
+          onPress: async () => {
+            try {
+              // ✅ NEW: Calculate exactly 24 hours from right now
+              const expiryDate = new Date();
+              expiryDate.setHours(expiryDate.getHours() + 24);
+
+              const { error } = await supabase
+                .from("events")
+                .update({
+                  is_boosted: true,
+                  boosted_until: expiryDate.toISOString(), // Save the expiration!
+                })
+                .eq("id", eventId);
+
+              if (error) throw error;
+
+              setIsBoosted(true);
+              Alert.alert("Success", "Your event is now boosted for 24 hours!");
+            } catch (error: any) {
+              Alert.alert("Error", error.message);
+            }
+          },
+        },
+      ]
+    );
   };
 
   const handleShare = async () => {
@@ -74,30 +122,6 @@ const PromoteEventScreen = () => {
     } catch (error) {
       console.log(error);
     }
-  };
-
-  const handleBoost = () => {
-    Alert.alert(
-      "Confirm Boost",
-      "Spend R 500 to feature this event on the Home Screen for 24 hours?",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Pay R 500",
-          onPress: async () => {
-            const { error } = await supabase
-              .from("events")
-              .update({ is_boosted: true })
-              .eq("id", eventId);
-
-            if (!error) {
-              setIsBoosted(true);
-              Alert.alert("Success", "Your event is now featured!");
-            }
-          },
-        },
-      ]
-    );
   };
 
   const handlePushBlast = () => {

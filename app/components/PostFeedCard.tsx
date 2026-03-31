@@ -20,6 +20,7 @@ import {
   X,
   Volume2,
   VolumeX,
+  Heart, // ✅ Added Heart icon
 } from "lucide-react-native";
 import {
   Video,
@@ -30,11 +31,15 @@ import {
 } from "expo-av";
 import { fireGradient } from "../styles/colours";
 
+// ✅ Import the custom hook
+import { useSavedEvent } from "../hooks/useSavedEvent";
+
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("screen");
 const CARD_HEIGHT = SCREEN_WIDTH * 1.5;
 
 type PostFeedCardProps = {
   id: string;
+  eventId: string; // ✅ Added eventId so we know what to save!
   caption: string;
   image: string | null;
   eventTitle: string;
@@ -50,6 +55,7 @@ type PostFeedCardProps = {
 const PostFeedCard = ({
   caption,
   image,
+  eventId, // ✅ Destructure eventId
   eventTitle,
   hostName,
   hostAvatar,
@@ -62,16 +68,18 @@ const PostFeedCard = ({
   const [isFullScreen, setIsFullScreen] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
 
+  // ✅ Initialize the hook for this specific card
+  const { isSaved, toggleSave } = useSavedEvent(eventId);
+
   const isVideo = image?.includes(".mp4") || image?.includes(".mov");
 
-  // ✅ AUDIO FIX: Allow mixing so background music (Spotify) keeps playing
+  // AUDIO FIX: Allow mixing so background music (Spotify) keeps playing
   useEffect(() => {
     const configureAudio = async () => {
       try {
         await Audio.setAudioModeAsync({
           playsInSilentModeIOS: true,
           staysActiveInBackground: false,
-          // 👇 These two lines stop the app from killing Spotify
           interruptionModeIOS: InterruptionModeIOS.MixWithOthers,
           interruptionModeAndroid: InterruptionModeAndroid.DuckOthers,
           shouldDuckAndroid: true,
@@ -122,7 +130,6 @@ const PostFeedCard = ({
         className="mb-2 bg-black relative rounded-[32px] overflow-hidden mx-1 shadow-xl shadow-black"
         style={{ height: CARD_HEIGHT, width: SCREEN_WIDTH - 8 }}
       >
-        {/* ✅ TAP FIX: Removed double-tap like. Single tap anywhere opens full screen. */}
         <Pressable
           onPress={openFullScreen}
           style={{ flex: 1, backgroundColor: "#111" }}
@@ -159,7 +166,6 @@ const PostFeedCard = ({
         </View>
 
         {/* BOTTOM CONTENT */}
-        {/* ✅ POINTER EVENTS FIX: 'box-none' lets taps pass through the transparent parts */}
         <LinearGradient
           colors={["transparent", "rgba(0,0,0,0.4)", "rgba(0,0,0,0.95)"]}
           className="absolute bottom-0 left-0 right-0 px-5 pb-6 pt-32 justify-end"
@@ -186,7 +192,8 @@ const PostFeedCard = ({
           </Text>
 
           <View className="flex-row items-center justify-between mb-5">
-            <View className="flex-row items-center">
+            {/* Host Info */}
+            <View className="flex-row items-center flex-1">
               <Image
                 source={
                   hostAvatar
@@ -196,7 +203,10 @@ const PostFeedCard = ({
                 className="w-10 h-10 rounded-full border-2 border-purple-500 mr-3"
               />
               <View>
-                <Text className="text-white text-base font-bold">
+                <Text
+                  className="text-white text-base font-bold"
+                  numberOfLines={1}
+                >
                   {hostName || "Host"}
                 </Text>
                 <Text className="text-white/60 text-xs font-medium">
@@ -205,12 +215,26 @@ const PostFeedCard = ({
               </View>
             </View>
 
-            <TouchableOpacity
-              className="bg-white/10 p-3 rounded-full backdrop-blur-md"
-              onPress={onOpenDiscussion}
-            >
-              <MessageCircle color="white" size={22} />
-            </TouchableOpacity>
+            {/* ✅ ACTION BUTTONS (Save & Discuss) */}
+            <View className="flex-row items-center gap-3">
+              <TouchableOpacity
+                className="bg-white/10 p-3 rounded-full backdrop-blur-md"
+                onPress={toggleSave}
+              >
+                <Heart
+                  color={isSaved ? "#FA8900" : "white"}
+                  fill={isSaved ? "#FA8900" : "transparent"}
+                  size={22}
+                />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                className="bg-white/10 p-3 rounded-full backdrop-blur-md"
+                onPress={onOpenDiscussion}
+              >
+                <MessageCircle color="white" size={22} />
+              </TouchableOpacity>
+            </View>
           </View>
 
           <TouchableOpacity

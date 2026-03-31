@@ -11,6 +11,7 @@ import {
   Alert,
   ActivityIndicator,
   RefreshControl,
+  Modal, // ✅ Added Modal
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
@@ -23,6 +24,8 @@ import {
   Video as VideoIcon,
   Trash2,
   Clock,
+  CalendarX2,
+  MoreHorizontal, // ✅ Added for the options menu
 } from "lucide-react-native";
 import * as ImagePicker from "expo-image-picker";
 import { Video, ResizeMode } from "expo-av";
@@ -51,13 +54,38 @@ const PostContentScreen = () => {
   } | null>(null);
   const [loading, setLoading] = useState(false);
 
-  // History State
+  // History & Expiry State
   const [previousPosts, setPreviousPosts] = useState<any[]>([]);
   const [refreshing, setRefreshing] = useState(false);
+  const [isEventOver, setIsEventOver] = useState(false);
 
-  // --- 1. FETCH HISTORY ---
+  // ✅ NEW: Post Options State
+  const [selectedPost, setSelectedPost] = useState<any>(null);
+  const [showPostOptions, setShowPostOptions] = useState(false);
+
+  // --- 1. FETCH HISTORY & CHECK EXPIRY ---
   const fetchPosts = useCallback(async () => {
     try {
+      const { data: eventData, error: eventError } = await supabase
+        .from("events")
+        .select("date, end_date")
+        .eq("id", eventId)
+        .single();
+
+      if (eventError) throw eventError;
+
+      const endDate = eventData.end_date
+        ? new Date(eventData.end_date)
+        : new Date(new Date(eventData.date).getTime() + 24 * 60 * 60 * 1000);
+
+      if (new Date() > endDate) {
+        setIsEventOver(true);
+        setPreviousPosts([]);
+        return;
+      }
+
+      setIsEventOver(false);
+
       const { data, error } = await supabase
         .from("event_updates")
         .select("*")
@@ -137,7 +165,7 @@ const PostContentScreen = () => {
       Alert.alert("Success", "Update posted!");
       setCaption("");
       setMedia(null);
-      fetchPosts(); // Refresh list immediately
+      fetchPosts();
     } catch (error: any) {
       Alert.alert("Error", error.message);
     } finally {
@@ -147,36 +175,37 @@ const PostContentScreen = () => {
 
   // --- 4. DELETE ACTION ---
   const handleDeletePost = (post: any) => {
-    // ✅ Pass full post object, not just ID
-    Alert.alert("Delete Update", "Are you sure? This cannot be undone.", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Delete",
-        style: "destructive",
-        onPress: async () => {
-          // 1. Delete File from Storage (if it exists)
-          if (post.image_url) {
-            // Extract path: "https://.../event-updates/filename.jpg" -> "filename.jpg"
-            const path = post.image_url.split("event-updates/").pop();
-            if (path) {
-              await supabase.storage.from("event-updates").remove([path]);
+    setShowPostOptions(false); // Hide the modal first
+    Alert.alert(
+      "Remove Post",
+      "Are you sure? This hype post will be permanently deleted.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Remove",
+          style: "destructive",
+          onPress: async () => {
+            if (post.image_url) {
+              const path = post.image_url.split("event-updates/").pop();
+              if (path) {
+                await supabase.storage.from("event-updates").remove([path]);
+              }
             }
-          }
 
-          // 2. Delete Row from DB
-          const { error } = await supabase
-            .from("event_updates")
-            .delete()
-            .eq("id", post.id);
+            const { error } = await supabase
+              .from("event_updates")
+              .delete()
+              .eq("id", post.id);
 
-          if (error) {
-            Alert.alert("Error", error.message);
-          } else {
-            fetchPosts(); // Refresh list
-          }
+            if (error) {
+              Alert.alert("Error", error.message);
+            } else {
+              fetchPosts(); // Refresh list
+            }
+          },
         },
-      },
-    ]);
+      ]
+    );
   };
 
   return (
@@ -218,165 +247,218 @@ const PostContentScreen = () => {
             </View>
           </View>
 
-          {/* CREATE POST SECTION */}
-          {media ? (
-            <View className="mb-6 relative rounded-2xl overflow-hidden shadow-lg shadow-purple-900/40 bg-black">
-              {media.type === "video" ? (
-                <Video
-                  source={{ uri: media.uri }}
-                  style={{ width: "100%", height: 300 }}
-                  resizeMode={ResizeMode.COVER}
-                  shouldPlay
-                  isLooping
-                  // isMuted removed so you can hear preview
-                />
-              ) : (
-                <Image
-                  source={{ uri: media.uri }}
-                  className="w-full h-72"
-                  resizeMode="cover"
-                />
-              )}
-
-              <TouchableOpacity
-                onPress={handleRemoveMedia}
-                className="absolute top-3 right-3 bg-black/60 p-2 rounded-full border border-white/20"
-              >
-                <X color="white" size={20} />
-              </TouchableOpacity>
-
-              <View className="absolute bottom-3 left-3 bg-purple-600/90 px-3 py-1 rounded-md flex-row items-center">
-                {media.type === "video" ? (
-                  <VideoIcon size={12} color="white" className="mr-1" />
-                ) : (
-                  <ImagePlus size={12} color="white" className="mr-1" />
-                )}
-                <Text className="text-white text-xs font-bold uppercase">
-                  {media.type === "video" ? "VIDEO ATTACHED" : "IMAGE ATTACHED"}
-                </Text>
+          {isEventOver ? (
+            <View className="bg-white/5 border border-white/10 rounded-3xl p-8 items-center justify-center mt-10">
+              <View className="bg-purple-500/20 p-5 rounded-full mb-4">
+                <CalendarX2 color="#D087FF" size={40} />
               </View>
+              <Text className="text-white text-2xl font-bold mb-2">
+                Event Ended
+              </Text>
+              <Text className="text-gray-400 text-center leading-5">
+                This event has finished. Updates are no longer visible to users
+                and new posts cannot be created.
+              </Text>
             </View>
           ) : (
-            <TouchableOpacity
-              onPress={handlePickMedia}
-              activeOpacity={0.8}
-              className="w-full h-48 bg-white/5 border-2 border-dashed border-white/20 rounded-2xl items-center justify-center mb-6"
-            >
-              <View className="bg-purple-500/20 p-4 rounded-full mb-2">
-                <ImagePlus color="#D087FF" size={32} />
-              </View>
-              <Text className="text-gray-400 font-medium">
-                Add Photo or Video
-              </Text>
-            </TouchableOpacity>
-          )}
-
-          <Text className="text-white text-lg font-bold mb-3">Caption</Text>
-          <View className="bg-white/5 border border-white/10 rounded-2xl px-4 py-3 mb-6 h-32">
-            <TextInput
-              placeholder="What's the hype? (e.g. Backstage sneak peek!)"
-              placeholderTextColor="#6b7280"
-              value={caption}
-              onChangeText={setCaption}
-              multiline
-              textAlignVertical="top"
-              className="flex-1 text-white text-lg font-medium"
-              style={{ fontFamily: "Jost-Medium" }}
-            />
-          </View>
-
-          {/* POST BUTTON */}
-          <TouchableOpacity
-            activeOpacity={0.8}
-            className="w-full shadow-lg shadow-purple-500/30 mb-12"
-            onPress={handlePost}
-            disabled={loading}
-          >
-            <LinearGradient
-              {...electricGradient}
-              className="w-full py-4 rounded-full flex-row items-center justify-center"
-            >
-              {loading ? (
-                <ActivityIndicator color="white" />
-              ) : (
-                <>
-                  <Send color="white" size={20} className="mr-2" />
-                  <Text
-                    className="text-white text-xl font-bold tracking-wide"
-                    style={{ fontFamily: "Jost-Medium" }}
-                  >
-                    POST UPDATE
-                  </Text>
-                </>
-              )}
-            </LinearGradient>
-          </TouchableOpacity>
-
-          {/* --- HISTORY SECTION --- */}
-          <Text className="text-white text-xl font-bold mb-4 border-t border-white/10 pt-6">
-            Previous Updates
-          </Text>
-
-          {previousPosts.length === 0 ? (
-            <Text className="text-gray-500 italic text-center py-4">
-              No updates posted yet.
-            </Text>
-          ) : (
-            previousPosts.map((post) => (
-              <View
-                key={post.id}
-                className="bg-white/5 border border-white/5 rounded-2xl p-3 mb-3 flex-row items-center"
-              >
-                {/* Thumbnail */}
-                <View className="w-16 h-16 bg-black/30 rounded-xl overflow-hidden mr-4 border border-white/10">
-                  {post.image_url ? (
-                    post.image_url.includes(".mp4") ||
-                    post.image_url.includes(".mov") ? (
-                      <View className="flex-1 items-center justify-center bg-gray-800">
-                        <VideoIcon color="white" size={20} />
-                      </View>
-                    ) : (
-                      <Image
-                        source={{ uri: post.image_url }}
-                        className="w-full h-full"
-                        resizeMode="cover"
-                      />
-                    )
+            <>
+              {/* CREATE POST SECTION */}
+              {media ? (
+                <View className="mb-6 relative rounded-2xl overflow-hidden shadow-lg shadow-purple-900/40 bg-black">
+                  {media.type === "video" ? (
+                    <Video
+                      source={{ uri: media.uri }}
+                      style={{ width: "100%", height: 300 }}
+                      resizeMode={ResizeMode.COVER}
+                      shouldPlay
+                      isLooping
+                    />
                   ) : (
-                    <View className="flex-1 items-center justify-center">
-                      <ImagePlus color="#666" size={20} />
-                    </View>
+                    <Image
+                      source={{ uri: media.uri }}
+                      className="w-full h-72"
+                      resizeMode="cover"
+                    />
                   )}
-                </View>
 
-                {/* Info */}
-                <View className="flex-1 pr-2">
-                  <Text
-                    className="text-white font-bold text-base mb-1"
-                    numberOfLines={1}
+                  <TouchableOpacity
+                    onPress={handleRemoveMedia}
+                    className="absolute top-3 right-3 bg-black/60 p-2 rounded-full border border-white/20"
                   >
-                    {post.caption || "No Caption"}
-                  </Text>
-                  <View className="flex-row items-center">
-                    <Clock size={12} color="#888" className="mr-1" />
-                    <Text className="text-gray-400 text-xs">
-                      {new Date(post.created_at).toLocaleDateString()}
+                    <X color="white" size={20} />
+                  </TouchableOpacity>
+
+                  <View className="absolute bottom-3 left-3 bg-purple-600/90 px-3 py-1 rounded-md flex-row items-center">
+                    {media.type === "video" ? (
+                      <VideoIcon size={12} color="white" className="mr-1" />
+                    ) : (
+                      <ImagePlus size={12} color="white" className="mr-1" />
+                    )}
+                    <Text className="text-white text-xs font-bold uppercase">
+                      {media.type === "video"
+                        ? "VIDEO ATTACHED"
+                        : "IMAGE ATTACHED"}
                     </Text>
                   </View>
                 </View>
-
-                {/* Delete Button */}
+              ) : (
                 <TouchableOpacity
-                  onPress={() => handleDeletePost(post)}
-                  className="bg-red-500/10 p-3 rounded-full"
+                  onPress={handlePickMedia}
+                  activeOpacity={0.8}
+                  className="w-full h-48 bg-white/5 border-2 border-dashed border-white/20 rounded-2xl items-center justify-center mb-6"
                 >
-                  <Trash2 color="#ef4444" size={20} />
+                  <View className="bg-purple-500/20 p-4 rounded-full mb-2">
+                    <ImagePlus color="#D087FF" size={32} />
+                  </View>
+                  <Text className="text-gray-400 font-medium">
+                    Add Photo or Video
+                  </Text>
                 </TouchableOpacity>
+              )}
+
+              <Text className="text-white text-lg font-bold mb-3">Caption</Text>
+              <View className="bg-white/5 border border-white/10 rounded-2xl px-4 py-3 mb-6 h-32">
+                <TextInput
+                  placeholder="What's the hype? (e.g. Backstage sneak peek!)"
+                  placeholderTextColor="#6b7280"
+                  value={caption}
+                  onChangeText={setCaption}
+                  multiline
+                  textAlignVertical="top"
+                  className="flex-1 text-white text-lg font-medium"
+                  style={{ fontFamily: "Jost-Medium" }}
+                />
               </View>
-            ))
+
+              {/* POST BUTTON */}
+              <TouchableOpacity
+                activeOpacity={0.8}
+                className="w-full shadow-lg shadow-purple-500/30 mb-12"
+                onPress={handlePost}
+                disabled={loading}
+              >
+                <LinearGradient
+                  {...electricGradient}
+                  className="w-full py-4 rounded-full flex-row items-center justify-center"
+                >
+                  {loading ? (
+                    <ActivityIndicator color="white" />
+                  ) : (
+                    <>
+                      <Send color="white" size={20} className="mr-2" />
+                      <Text
+                        className="text-white text-xl font-bold tracking-wide"
+                        style={{ fontFamily: "Jost-Medium" }}
+                      >
+                        POST UPDATE
+                      </Text>
+                    </>
+                  )}
+                </LinearGradient>
+              </TouchableOpacity>
+
+              {/* --- HISTORY SECTION --- */}
+              <Text className="text-white text-xl font-bold mb-4 border-t border-white/10 pt-6">
+                Previous Updates
+              </Text>
+
+              {previousPosts.length === 0 ? (
+                <Text className="text-gray-500 italic text-center py-4">
+                  No updates posted yet.
+                </Text>
+              ) : (
+                previousPosts.map((post) => (
+                  <View
+                    key={post.id}
+                    className="bg-white/5 border border-white/5 rounded-2xl p-3 mb-3 flex-row items-center"
+                  >
+                    {/* Thumbnail */}
+                    <View className="w-16 h-16 bg-black/30 rounded-xl overflow-hidden mr-4 border border-white/10">
+                      {post.image_url ? (
+                        post.image_url.includes(".mp4") ||
+                        post.image_url.includes(".mov") ? (
+                          <View className="flex-1 items-center justify-center bg-gray-800">
+                            <VideoIcon color="white" size={20} />
+                          </View>
+                        ) : (
+                          <Image
+                            source={{ uri: post.image_url }}
+                            className="w-full h-full"
+                            resizeMode="cover"
+                          />
+                        )
+                      ) : (
+                        <View className="flex-1 items-center justify-center">
+                          <ImagePlus color="#666" size={20} />
+                        </View>
+                      )}
+                    </View>
+
+                    {/* Info */}
+                    <View className="flex-1 pr-2">
+                      <Text
+                        className="text-white font-bold text-base mb-1"
+                        numberOfLines={1}
+                      >
+                        {post.caption || "No Caption"}
+                      </Text>
+                      <View className="flex-row items-center">
+                        <Clock size={12} color="#888" className="mr-1" />
+                        <Text className="text-gray-400 text-xs">
+                          {new Date(post.created_at).toLocaleDateString()}
+                        </Text>
+                      </View>
+                    </View>
+
+                    {/* Options Button (Replaced Trash Can) */}
+                    <TouchableOpacity
+                      onPress={() => {
+                        setSelectedPost(post);
+                        setShowPostOptions(true);
+                      }}
+                      className="bg-white/10 p-3 rounded-full"
+                    >
+                      <MoreHorizontal color="white" size={20} />
+                    </TouchableOpacity>
+                  </View>
+                ))
+              )}
+            </>
           )}
         </ScrollView>
       </SafeAreaView>
+
+      {/* --- POST OPTIONS MODAL --- */}
+      <Modal visible={showPostOptions} transparent animationType="slide">
+        <View className="flex-1 justify-end bg-black/60">
+          <View className="bg-[#1E1E1E] rounded-t-3xl p-6 pb-10">
+            <View className="flex-row justify-between items-center mb-6">
+              <Text className="text-white text-xl font-bold">Post Options</Text>
+              <TouchableOpacity
+                onPress={() => setShowPostOptions(false)}
+                className="bg-white/10 p-2 rounded-full"
+              >
+                <X color="white" size={20} />
+              </TouchableOpacity>
+            </View>
+
+            <TouchableOpacity
+              onPress={() => handleDeletePost(selectedPost)}
+              className="flex-row items-center p-4 bg-red-500/10 rounded-xl border border-red-500/30"
+            >
+              <Trash2 color="#EF4444" size={24} className="mr-4" />
+              <View>
+                <Text className="text-red-400 font-bold text-lg">
+                  Remove Post
+                </Text>
+                <Text className="text-red-500/60 text-xs">
+                  Permanently delete this hype update
+                </Text>
+              </View>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 };

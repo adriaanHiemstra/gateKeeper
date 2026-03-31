@@ -58,7 +58,7 @@ const HomeScreen = () => {
   useFocusEffect(
     useCallback(() => {
       fetchFeed();
-    }, [])
+    }, []),
   );
 
   const fetchFeed = async () => {
@@ -73,22 +73,20 @@ const HomeScreen = () => {
           *,
           profiles:host_id ( username, avatar_url ),
           ticket_tiers (*) 
-        `
+        `,
         )
         .gte("date", today)
         .order("date", { ascending: true })
         .limit(20);
 
       // 2. Fetch Updates
-      // Note: We perform a nested join to get Event info.
-      // Getting Host Profile via Event is deep, so we'll settle for Event Info for now.
       const { data: updatesData } = await supabase
         .from("event_updates")
         .select(
           `
             *,
             events ( title, id )
-        `
+        `,
         )
         .order("created_at", { ascending: false })
         .limit(20);
@@ -108,7 +106,7 @@ const HomeScreen = () => {
 
       // 4. Combine and Sort
       const combined = [...formattedEvents, ...formattedUpdates].sort(
-        (a, b) => b.sortTime - a.sortTime
+        (a, b) => b.sortTime - a.sortTime,
       );
 
       setFeedData(combined);
@@ -120,24 +118,22 @@ const HomeScreen = () => {
   };
 
   // --- NAVIGATION HELPER ---
-  // ✅ FIX: Handles both Full Objects and Partial Data by using placeholders
   const goToEventProfile = (data: any, isPartial: boolean = false) => {
     if (isPartial) {
-      // Logic for POSTS (where we might lack full details)
+      // Logic for POSTS
       navigation.navigate("EventProfile", {
         eventId: data.event_id || data.id,
-        // 👇 Placeholders satisfy the Type Checker; Profile Screen will fetch real data.
         eventName: data.events?.title || "Loading...",
         attendees: 0,
         logo: require("../assets/profile-pic-1.png"),
         banner: require("../assets/event-placeholder.png"),
       });
     } else {
-      // Logic for EVENT CARDS (where we have full details)
+      // Logic for EVENT CARDS
       navigation.navigate("EventProfile", {
         eventId: data.id,
         eventName: data.title,
-        attendees: 120, // Or calculate from tickets
+        attendees: 120,
         logo: data.profiles?.avatar_url
           ? { uri: data.profiles.avatar_url }
           : require("../assets/profile-pic-1.png"),
@@ -187,11 +183,9 @@ const HomeScreen = () => {
 
   const panelTranslateX = useSharedValue(width);
 
-  const openPanel = (friends: any[], title: string) => {
-    setSelectedFriends([
-      { id: "1", name: "Sarah J", img: require("../assets/profile-pic-2.png") },
-      { id: "2", name: "Mike T", img: require("../assets/profile-pic-1.png") },
-    ]);
+  // Find this function in HomeScreen.tsx and replace it:
+  const openPanel = (friendsData: any[], title: string) => {
+    setSelectedFriends(friendsData); // <--- Set the real friends!
     setSelectedEventTitle(title);
     setIsPanelOpen(true);
     panelTranslateX.value = withTiming(width - PANEL_WIDTH, {
@@ -237,21 +231,21 @@ const HomeScreen = () => {
                 return (
                   <PostFeedCard
                     id={item.id}
+                    eventId={item.event_id} // ✅ FIX: Added the missing prop here!
                     caption={item.caption}
                     image={item.image_url}
                     eventTitle={item.events?.title || "Unknown Event"}
                     hostName={"Event Update"}
                     hostAvatar={null}
                     timestamp={new Date(item.created_at).toLocaleDateString()}
-                    // ✅ NEW PROPS PASSED HERE
-                    attendeesCount={12} // Or dynamic number if you have it
+                    attendeesCount={12}
                     onOpenSocial={() =>
                       openPanel([], item.events?.title || "Event")
                     }
                     onViewEvent={() => goToEventProfile(item, true)}
                     onOpenDiscussion={() =>
                       navigation.navigate("EventCommunity", {
-                        eventId: item.event_id, // Use the ID from the post
+                        eventId: item.event_id,
                         eventTitle: item.events?.title || "Event",
                       })
                     }
@@ -286,8 +280,11 @@ const HomeScreen = () => {
                   }
                   attendeesCount={12}
                   onOpenSocial={() => openPanel([], item.title)}
-                  onPressHost={() => navigation.navigate("EventHostProfile")}
-                  // ✅ Pass FALSE (or nothing) for isPartial to use full data
+                  onPressHost={() =>
+                    navigation.navigate("EventHostProfile", {
+                      hostId: item.host_id,
+                    })
+                  }
                   onViewEvent={() => goToEventProfile(item, false)}
                 />
               );
@@ -352,18 +349,32 @@ const HomeScreen = () => {
               </View>
               <FlatList
                 data={selectedFriends}
-                keyExtractor={(item) => item.id}
+                keyExtractor={(item) =>
+                  item.friend_id || Math.random().toString()
+                }
+                ListEmptyComponent={
+                  <Text className="text-gray-500 text-center mt-10">
+                    None of your crew has jumped on this yet.
+                  </Text>
+                }
                 renderItem={({ item }) => (
                   <TouchableOpacity className="flex-row items-center mb-6">
                     <Image
-                      source={item.img}
+                      source={
+                        item.avatar_url
+                          ? { uri: item.avatar_url }
+                          : require("../assets/profile-pic-1.png")
+                      }
                       className="w-14 h-14 rounded-full border-2 border-orange-500 mr-4"
                     />
                     <View className="flex-1">
                       <Text className="text-white text-lg font-bold">
-                        {item.name}
+                        {item.username}
                       </Text>
-                      <Text className="text-gray-500 text-sm">Going</Text>
+                      {/* Show if they are officially going, or just interested! */}
+                      <Text className="text-gray-400 text-sm">
+                        {item.intent === "GOING" ? "Going 🚀" : "Interested"}
+                      </Text>
                     </View>
                     <ChevronRight color="#666" size={20} />
                   </TouchableOpacity>

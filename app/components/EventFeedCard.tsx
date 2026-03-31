@@ -38,6 +38,10 @@ import {
 } from "expo-av";
 import { fireGradient } from "../styles/colours";
 
+// ✅ Import the custom hook
+import { useSavedEvent } from "../hooks/useSavedEvent";
+import { useEventFriends } from "../hooks/useEventFriends";
+
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("screen");
 const CARD_HEIGHT = SCREEN_WIDTH * 1.6;
 
@@ -49,7 +53,7 @@ type EventFeedCardProps = {
   image: any;
   mediaItems?: any[];
   attendeesCount: number;
-  onOpenSocial: () => void;
+  onOpenSocial: (friendsData: any[]) => void;
   onPressHost: () => void;
   onViewEvent: () => void;
   showSocial?: boolean;
@@ -78,6 +82,7 @@ const isVideoFile = (source: any) => {
 };
 
 const EventFeedCard = ({
+  id, // ✅ This is the event ID passed from the home screen
   title,
   hostName,
   hostAvatar,
@@ -90,8 +95,11 @@ const EventFeedCard = ({
   showSocial = true,
   disableTap = false,
 }: EventFeedCardProps) => {
-  const [isLiked, setIsLiked] = useState(false);
   const [isFullScreen, setIsFullScreen] = useState(false);
+
+  // ✅ Bring in the Supabase logic using the Event ID
+  const { isSaved, toggleSave } = useSavedEvent(id);
+  const { friends } = useEventFriends(id);
 
   const carouselData =
     mediaItems && mediaItems.length > 0 ? mediaItems : [image];
@@ -102,7 +110,7 @@ const EventFeedCard = ({
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isMuted, setIsMuted] = useState(false);
 
-  // ✅ AUDIO FIX FOR EVENTS
+  // AUDIO FIX FOR EVENTS
   useEffect(() => {
     const enableAudio = async () => {
       try {
@@ -121,9 +129,11 @@ const EventFeedCard = ({
   }, []);
 
   const handleLike = () => {
-    const newState = !isLiked;
-    setIsLiked(newState);
-    if (newState) {
+    // Fire the database save function
+    toggleSave();
+
+    // If it wasn't saved before (meaning we are saving it right now), trigger the big heart animation
+    if (!isSaved) {
       scale.value = 0;
       opacity.value = 1;
       scale.value = withSpring(1, { damping: 15 });
@@ -231,7 +241,7 @@ const EventFeedCard = ({
             "rgba(0,0,0,0.95)",
           ]}
           className="absolute bottom-0 left-0 right-0 px-5 pb-6 pt-32 justify-end z-20"
-          pointerEvents="box-none" // ✅ Keeps gradient from blocking taps
+          pointerEvents="box-none"
         >
           <View>
             <Text
@@ -269,8 +279,8 @@ const EventFeedCard = ({
               className="bg-white/20 p-3 rounded-full backdrop-blur-md"
             >
               <Heart
-                color={isLiked ? "#FA8900" : "white"}
-                fill={isLiked ? "#FA8900" : "none"}
+                color={isSaved ? "#FA8900" : "white"}
+                fill={isSaved ? "#FA8900" : "none"}
                 size={24}
               />
             </TouchableOpacity>
@@ -299,22 +309,41 @@ const EventFeedCard = ({
 
         {showSocial && (
           <TouchableOpacity
-            onPress={onOpenSocial}
+            // Pass the friends array up to the Home Screen!
+            onPress={() => onOpenSocial(friends)}
             activeOpacity={0.8}
             style={{ zIndex: 50 }}
-            className="absolute top-6 right-4 items-center"
+            className={`absolute top-6 right-4 flex-row items-center rounded-full border border-white/20 shadow-lg shadow-black/60 ${friends.length > 0 ? "bg-black/80 pl-2 pr-4 py-2" : ""}`}
           >
-            <LinearGradient
-              {...fireGradient}
-              className="w-16 h-16 rounded-full items-center justify-center shadow-lg shadow-black/60 border-2 border-white/20"
-            >
-              <Users color="white" size={28} fill="white" />
-            </LinearGradient>
-            <View className="bg-black/80 px-3 py-1 rounded-full mt-[-10px] border border-white/20">
-              <Text className="text-white text-xs font-bold">
-                +{attendeesCount}
-              </Text>
-            </View>
+            {friends.length > 0 ? (
+              <>
+                <View className="flex-row mr-2">
+                  {friends.slice(0, 3).map((friend: any, i: number) => (
+                    <Image
+                      key={friend.friend_id}
+                      source={
+                        friend.avatar_url
+                          ? { uri: friend.avatar_url }
+                          : require("../assets/profile-pic-1.png")
+                      }
+                      className="w-8 h-8 rounded-full border-2 border-[#121212]"
+                      style={{ marginLeft: i > 0 ? -12 : 0 }} // Creates the overlap effect
+                    />
+                  ))}
+                </View>
+                <Text className="text-white text-xs font-bold">
+                  {friends.length} {friends.length === 1 ? "Friend" : "Friends"}
+                </Text>
+              </>
+            ) : (
+              // Fallback if no friends are going yet
+              <LinearGradient
+                {...fireGradient}
+                className="w-12 h-12 rounded-full items-center justify-center shadow-lg shadow-black/60 border-2 border-white/20"
+              >
+                <Users color="white" size={20} fill="white" />
+              </LinearGradient>
+            )}
           </TouchableOpacity>
         )}
       </View>
