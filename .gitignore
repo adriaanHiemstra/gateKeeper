@@ -21,3 +21,6 @@ yarn-error.log*
 
 # NativeWind
 nativewind-env.d.ts.bak
+
+.env
+WebScrapers/.env
