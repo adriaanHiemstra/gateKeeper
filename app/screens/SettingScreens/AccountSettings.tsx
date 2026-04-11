@@ -19,9 +19,7 @@ import {
   CreditCard,
   HelpCircle,
   LogOut,
-  MapPin,
   Users,
-  Calendar,
   Shield,
   Ticket,
   Heart,
@@ -164,16 +162,6 @@ const AccountSettings = () => {
               icon={<Users color="#FA8900" size={20} />}
               label="Friends Settings"
               onPress={() => navigation.navigate("FriendsSocialSettings")}
-            />
-            <SettingsItem
-              icon={<MapPin color="#FA8900" size={20} />}
-              label="Location & Region"
-              onPress={() => navigation.navigate("LocationSettings")}
-            />
-            <SettingsItem
-              icon={<Calendar color="#FA8900" size={20} />}
-              label="Calendar Sync"
-              onPress={() => navigation.navigate("DataSyncSettings")}
             />
           </View>
 

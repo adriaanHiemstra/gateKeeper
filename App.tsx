@@ -1,38 +1,55 @@
 import React, { useEffect, useState } from "react";
-import { StatusBar } from "expo-status-bar";
+import { View, ActivityIndicator } from "react-native";
 import * as Font from "expo-font";
-import { ActivityIndicator, View } from "react-native";
-import AppNavigator from "./app/navigation/AppNavigator";
+import { StatusBar } from "expo-status-bar";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
-import "react-native-gesture-handler";
 
-// 👇 IMPORT THE AUTH PROVIDER
+// 👇 1. Import it here
+import { NavigationContainer } from "@react-navigation/native";
+
+import AppNavigator from "./app/navigation/AppNavigator";
 import { AuthProvider } from "./app/context/AuthContext";
+import { SavedEventsProvider } from "./app/context/SavedEventsContext";
 
 export default function App() {
   const [fontsLoaded, setFontsLoaded] = useState(false);
 
   useEffect(() => {
-    Font.loadAsync({
-      "Jost-Medium": require("./app/assets/Jost-Medium.ttf"),
-    }).then(() => setFontsLoaded(true));
+    async function loadFonts() {
+      await Font.loadAsync({
+        "Jost-Medium": require("./app/assets/Jost-Medium.ttf"),
+      });
+      setFontsLoaded(true);
+    }
+    loadFonts();
   }, []);
 
   if (!fontsLoaded) {
     return (
-      <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
-        <ActivityIndicator size="large" />
+      <View
+        style={{
+          flex: 1,
+          justifyContent: "center",
+          alignItems: "center",
+          backgroundColor: "#121212",
+        }}
+      >
+        <ActivityIndicator size="large" color="#FA8900" />
       </View>
     );
   }
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      {/* 👇 WRAP EVERYTHING IN AUTH PROVIDER */}
-      <AuthProvider>
-        <AppNavigator />
-        <StatusBar style="auto" />
-      </AuthProvider>
+      {/* 👇 2. Navigation Container is the KING. It wraps EVERYTHING. */}
+      <NavigationContainer>
+        <AuthProvider>
+          <SavedEventsProvider>
+            <AppNavigator />
+            <StatusBar style="light" />
+          </SavedEventsProvider>
+        </AuthProvider>
+      </NavigationContainer>
     </GestureHandlerRootView>
   );
 }

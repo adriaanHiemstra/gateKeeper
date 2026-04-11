@@ -82,10 +82,12 @@ const EventProfileScreen = () => {
   // LIVE STATE
   const [eventData, setEventData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+
   // --- TRAPDOOR STATE ---
   const appState = useRef(AppState.currentState);
   const [awaitingTicketReturn, setAwaitingTicketReturn] = useState(false);
   const [showTicketModal, setShowTicketModal] = useState(false);
+
   // --- THE TRAPDOOR LISTENER ---
   useEffect(() => {
     const subscription = AppState.addEventListener("change", (nextAppState) => {
@@ -114,6 +116,7 @@ const EventProfileScreen = () => {
 
   // Initialize the custom hook for saving the event
   const { isSaved, toggleSave } = useSavedEvent(eventId);
+
   // 🔥 THE NATIVE SHARE FUNCTION
   const handleShare = async () => {
     try {
@@ -144,6 +147,7 @@ const EventProfileScreen = () => {
       console.error("Error sharing:", error.message);
     }
   };
+
   // FETCH FRESH DATA ON FOCUS
   useFocusEffect(
     useCallback(() => {
@@ -540,21 +544,21 @@ const EventProfileScreen = () => {
 
           {/* TITLE & HOST */}
           <View className="px-6 mb-6 -mt-12">
-            {/* CONDITIONAL HOST PILL */}
-            {hostName && (
+            {/* 👇 LOCKED DOWN CONDITIONAL HOST PILL */}
+            {displayEvent?.host_id && hostName && hostName.trim() !== "" && (
               <TouchableOpacity
                 onPress={() =>
                   navigation.navigate("EventHostProfile", {
                     hostId: displayEvent.host_id,
                   })
                 }
-                className="flex-row items-center bg-[#1E1E1E] self-start px-2 py-1 rounded-full border border-white/10 mb-4 shadow-lg"
+                className="flex-row items-center bg-[#1E1E1E] self-start px-3 py-1.5 rounded-full border border-white/10 mb-4 shadow-lg"
               >
                 <Image
                   source={hostAvatar}
-                  className="w-8 h-8 rounded-full mr-2"
+                  className="w-6 h-6 rounded-full mr-2"
                 />
-                <Text className="text-gray-300 text-sm font-bold pr-2">
+                <Text className="text-gray-300 text-sm font-bold pr-1">
                   {hostName}
                 </Text>
               </TouchableOpacity>

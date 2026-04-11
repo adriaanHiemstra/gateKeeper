@@ -44,6 +44,7 @@ import DataSyncSettings from "../screens/SettingScreens/DataSyncSettings";
 import SupportFeedbackSettings from "../screens/SettingScreens/SupportFeedbackSettings";
 import FindFriendsScreen from "../screens/SettingScreens/FindFriendsScreen";
 import EventCommunityScreen from "../screens/EventCommunityScreen";
+import BlockedAccounts from "../screens/SettingScreens/BlockedAccountsScreen";
 
 import type { RootStackParamList } from "../types/types";
 
@@ -70,113 +71,110 @@ const Stack = createNativeStackNavigator<RootStackParamList>();
 
 export default function AppNavigator() {
   return (
-    <NavigationContainer>
-      <Stack.Navigator
-        initialRouteName="Home"
-        screenOptions={{ headerShown: false }}
-      >
-        {/* Main Tabs */}
-        <Stack.Screen name="Map" component={Map} />
-        <Stack.Screen
-          name="Home"
-          component={HomeScreen}
-          options={{ headerShown: false, gestureEnabled: false }}
-        />
-        <Stack.Screen name="Search" component={Search} />
-        {/* Profile removed, AccountSettings is now the main hub */}
+    <Stack.Navigator
+      initialRouteName="Home"
+      screenOptions={{ headerShown: false }}
+    >
+      {/* Main Tabs */}
+      <Stack.Screen name="Map" component={Map} />
+      <Stack.Screen
+        name="Home"
+        component={HomeScreen}
+        options={{ headerShown: false, gestureEnabled: false }}
+      />
+      <Stack.Screen name="Search" component={Search} />
+      {/* Profile removed, AccountSettings is now the main hub */}
 
-        {/* User Features */}
-        <Stack.Screen name="AccountSettings" component={AccountSettings} />
-        <Stack.Screen name="MyTicketsScreen" component={MyTicketsScreen} />
-        <Stack.Screen name="Wishlist" component={WishlistScreen} />
-        <Stack.Screen
-          name="FriendsSocialCircle"
-          component={FriendsSocialCircleScreen}
-        />
-        <Stack.Screen name="FindFriends" component={FindFriendsScreen} />
+      {/* User Features */}
+      <Stack.Screen name="AccountSettings" component={AccountSettings} />
+      <Stack.Screen name="MyTicketsScreen" component={MyTicketsScreen} />
+      <Stack.Screen name="Wishlist" component={WishlistScreen} />
+      <Stack.Screen
+        name="FriendsSocialCircle"
+        component={FriendsSocialCircleScreen}
+      />
+      <Stack.Screen name="FindFriends" component={FindFriendsScreen} />
 
-        {/* Event & Venue */}
-        <Stack.Screen name="EventProfile" component={EventProfileScreen} />
-        <Stack.Screen name="TicketDisplay" component={TicketDisplayScreen} />
-        <Stack.Screen
-          name="EventCommunity"
-          component={EventCommunityScreen} // ✅ Points to the new file
-        />
+      {/* Event & Venue */}
+      <Stack.Screen name="EventProfile" component={EventProfileScreen} />
+      <Stack.Screen name="TicketDisplay" component={TicketDisplayScreen} />
+      <Stack.Screen
+        name="EventCommunity"
+        component={EventCommunityScreen} // ✅ Points to the new file
+      />
 
-        <Stack.Screen
-          name="EventHostProfile"
-          component={EventHostProfileScreen}
-        />
-        <Stack.Screen name="VenueProfile" component={VenueProfileScreen} />
-        <Stack.Screen name="PurchaseTicket" component={PurchaseTicketScreen} />
+      <Stack.Screen
+        name="EventHostProfile"
+        component={EventHostProfileScreen}
+      />
+      <Stack.Screen name="VenueProfile" component={VenueProfileScreen} />
+      <Stack.Screen name="PurchaseTicket" component={PurchaseTicketScreen} />
 
-        <Stack.Screen
-          name="EventDiscussion"
-          component={EventDiscussionScreen}
-        />
+      <Stack.Screen name="EventDiscussion" component={EventDiscussionScreen} />
 
-        {/* Settings Sub-screens */}
-        <Stack.Screen name="EditUserProfile" component={EditUserProfile} />
-        <Stack.Screen name="ChangePassword" component={ChangePassword} />
-        <Stack.Screen
-          name="PrivacySecuritySettings"
-          component={PrivacySecuritySettings}
-        />
-        <Stack.Screen
-          name="NotificationsSettings"
-          component={NotificationsSettings}
-        />
-        <Stack.Screen
-          name="FriendsSocialSettings"
-          component={FriendsSocialSettings}
-        />
-        <Stack.Screen name="LocationSettings" component={LocationSettings} />
-        <Stack.Screen
-          name="TicketsPaymentsSettings"
-          component={TicketsPaymentsSettings}
-        />
-        <Stack.Screen name="DataSyncSettings" component={DataSyncSettings} />
-        <Stack.Screen
-          name="SupportFeedbackSettings"
-          component={SupportFeedbackSettings}
-        />
-        <Stack.Screen name="GetConnected" component={GetConnected} />
-        <Stack.Screen name="AddPayment" component={AddPayment} />
-        <Stack.Screen name="AddCardScreen" component={AddCardScreen} />
-        <Stack.Screen name="DeleteAccount" component={DeleteAccountScreen} />
+      {/* Settings Sub-screens */}
+      <Stack.Screen name="EditUserProfile" component={EditUserProfile} />
+      <Stack.Screen
+        name="BlockedAccounts"
+        component={BlockedAccounts}
+        options={{ animation: "slide_from_right" }} // Smooth Pro transition
+      />
+      <Stack.Screen name="ChangePassword" component={ChangePassword} />
+      <Stack.Screen
+        name="PrivacySecuritySettings"
+        component={PrivacySecuritySettings}
+      />
+      <Stack.Screen
+        name="NotificationsSettings"
+        component={NotificationsSettings}
+      />
+      <Stack.Screen
+        name="FriendsSocialSettings"
+        component={FriendsSocialSettings}
+      />
+      <Stack.Screen name="LocationSettings" component={LocationSettings} />
+      <Stack.Screen
+        name="TicketsPaymentsSettings"
+        component={TicketsPaymentsSettings}
+      />
+      <Stack.Screen name="DataSyncSettings" component={DataSyncSettings} />
+      <Stack.Screen
+        name="SupportFeedbackSettings"
+        component={SupportFeedbackSettings}
+      />
+      <Stack.Screen name="GetConnected" component={GetConnected} />
+      <Stack.Screen name="AddPayment" component={AddPayment} />
+      <Stack.Screen name="AddCardScreen" component={AddCardScreen} />
+      <Stack.Screen name="DeleteAccount" component={DeleteAccountScreen} />
 
-        {/* Auth */}
-        <Stack.Screen name="Login" component={Login} />
-        <Stack.Screen name="SignUp" component={SignUp} />
-        <Stack.Screen name="Onboarding" component={Onboarding} />
-        <Stack.Screen name="ForgotPassword" component={ForgotPassword} />
-        <Stack.Screen name="ResetPassword" component={ResetPassword} />
+      {/* Auth */}
+      <Stack.Screen name="Login" component={Login} />
+      <Stack.Screen name="SignUp" component={SignUp} />
+      <Stack.Screen name="Onboarding" component={Onboarding} />
+      <Stack.Screen name="ForgotPassword" component={ForgotPassword} />
+      <Stack.Screen name="ResetPassword" component={ResetPassword} />
 
-        {/* Host Screens */}
-        <Stack.Screen name="HostDashboard" component={HostDashboard} />
-        <Stack.Screen name="MyEventsList" component={MyEventsList} />
-        <Stack.Screen name="ManageEvent" component={ManageEventScreen} />
-        <Stack.Screen name="CreateEvent" component={CreateEventScreen} />
-        <Stack.Screen name="ScanTickets" component={ScanTicketsScreen} />
-        <Stack.Screen name="EditEvent" component={EditEventScreen} />
-        <Stack.Screen name="PostContent" component={PostContentScreen} />
-        <Stack.Screen
-          name="HostProfileEdit"
-          component={HostProfileEditScreen}
-        />
-        <Stack.Screen name="EventStats" component={EventStatsScreen} />
-        <Stack.Screen name="PayoutsSetup" component={PayoutsSetupScreen} />
-        <Stack.Screen name="HostSettings" component={HostSettingsScreen} />
-        <Stack.Screen
-          name="HostNotifications"
-          component={HostNotificationsSettings}
-        />
-        <Stack.Screen name="HostSecurity" component={HostSecuritySettings} />
-        <Stack.Screen name="HostSupport" component={HostSupportSettings} />
-        <Stack.Screen name="GuestList" component={GuestListScreen} />
-        <Stack.Screen name="TeamAccess" component={TeamAccessScreen} />
-        <Stack.Screen name="PromoteEvent" component={PromoteEventScreen} />
-      </Stack.Navigator>
-    </NavigationContainer>
+      {/* Host Screens */}
+      <Stack.Screen name="HostDashboard" component={HostDashboard} />
+      <Stack.Screen name="MyEventsList" component={MyEventsList} />
+      <Stack.Screen name="ManageEvent" component={ManageEventScreen} />
+      <Stack.Screen name="CreateEvent" component={CreateEventScreen} />
+      <Stack.Screen name="ScanTickets" component={ScanTicketsScreen} />
+      <Stack.Screen name="EditEvent" component={EditEventScreen} />
+      <Stack.Screen name="PostContent" component={PostContentScreen} />
+      <Stack.Screen name="HostProfileEdit" component={HostProfileEditScreen} />
+      <Stack.Screen name="EventStats" component={EventStatsScreen} />
+      <Stack.Screen name="PayoutsSetup" component={PayoutsSetupScreen} />
+      <Stack.Screen name="HostSettings" component={HostSettingsScreen} />
+      <Stack.Screen
+        name="HostNotifications"
+        component={HostNotificationsSettings}
+      />
+      <Stack.Screen name="HostSecurity" component={HostSecuritySettings} />
+      <Stack.Screen name="HostSupport" component={HostSupportSettings} />
+      <Stack.Screen name="GuestList" component={GuestListScreen} />
+      <Stack.Screen name="TeamAccess" component={TeamAccessScreen} />
+      <Stack.Screen name="PromoteEvent" component={PromoteEventScreen} />
+    </Stack.Navigator>
   );
 }

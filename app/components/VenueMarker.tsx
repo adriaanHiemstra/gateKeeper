@@ -17,7 +17,7 @@ const VenueMarker = memo(({ venue, showLabels, onSelect }: any) => {
       coordinate={{ latitude: venue.lat, longitude: venue.lng }}
       onPress={() => onSelect(venue)}
       zIndex={5}
-      tracksViewChanges={Platform.OS === "ios" ? trackChanges : false}
+      tracksViewChanges={false}
     >
       <View className="items-center">
         <View

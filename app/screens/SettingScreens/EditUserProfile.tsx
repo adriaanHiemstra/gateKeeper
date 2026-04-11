@@ -355,7 +355,6 @@ const EditUserProfile = () => {
             />
             <ProfileInput
               label="Bio"
-              icon={<AlignLeft color="white" size={20} />}
               value={bio}
               onChange={setBio}
               multiline={true}
@@ -366,20 +365,20 @@ const EditUserProfile = () => {
             <View className="mb-10">
               <View className="flex-row items-center mb-3 ml-1">
                 <Tag color="#9CA3AF" size={16} className="mr-2" />
-                <Text className="text-gray-400 text-xs font-bold uppercase tracking-wider">
+                <Text className="text-gray-400 text-xs font-bold uppercase tracking-wider ml-2">
                   Event Preferences ({interests.length}/5)
                 </Text>
               </View>
 
               {/* SEARCH BAR */}
-              <View className="flex-row items-center bg-white/5 border border-white/10 rounded-xl px-4 h-12 mb-4">
+              <View className="flex-row items-center bg-white/5 border border-white/10 rounded-xl px-4 h-12  mb-4">
                 <Search color="#666" size={18} className="mr-2" />
                 <TextInput
                   value={searchQuery}
                   onChangeText={setSearchQuery}
                   placeholder="Search categories..."
                   placeholderTextColor="#666"
-                  className="flex-1 text-white"
+                  className="flex-1 ml-2 text-white"
                   style={{ fontFamily: "Jost-Medium" }}
                 />
                 {searchQuery.length > 0 && (
@@ -458,7 +457,7 @@ const EditUserProfile = () => {
                   <>
                     <Save color="white" size={20} className="mr-2" />
                     <Text
-                      className="text-white text-xl font-bold tracking-wide"
+                      className="text-white text-xl ml-2 font-bold tracking-wide"
                       style={{ fontFamily: "Jost-Medium" }}
                     >
                       SAVE CHANGES

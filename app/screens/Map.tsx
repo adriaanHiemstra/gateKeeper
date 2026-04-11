@@ -35,7 +35,7 @@ import { supabase } from "../lib/supabase";
 // Types
 import { RootStackParamList } from "../types/types";
 
-// ✅ QUICK FILTERS (Shown on the map)
+// ✅ QUICK FILTERS
 const QUICK_CATEGORIES = [
   "Music",
   "Sports",
@@ -54,33 +54,43 @@ const TIME_OPTIONS = [
   "Custom",
 ];
 
-const GET_CATEGORY_COLOR = (category: string) => {
-  const cat = (category || "").toLowerCase();
-  if (
-    ["techno", "house", "music", "live music", "clubbing", "hip hop"].some(
-      (x) => cat.includes(x)
-    )
-  )
-    return "#A855F7";
-  if (["sports", "rugby", "running", "yoga"].some((x) => cat.includes(x)))
-    return "#F97316";
-  if (["shows", "comedy", "theater"].some((x) => cat.includes(x)))
-    return "#3B82F6";
-  if (["outdoors", "hikes"].some((x) => cat.includes(x))) return "#10B981";
-  if (["restaurants", "food", "dining", "bars"].some((x) => cat.includes(x)))
-    return "#EF4444";
-  if (["markets"].some((x) => cat.includes(x))) return "#EAB308";
+// ✅ STRICT SUPER-CATEGORY COLOR ENGINE
+const GET_CATEGORY_COLOR = (
+  name: string,
+  groupedCategories: Record<string, string[]>,
+) => {
+  if (!name) return "#FA8900"; // Default GateKeeper Orange
+
+  let targetGroup = name;
+
+  // 1. If 'name' is a specific category (e.g., "Techno"), find its Supercategory (e.g., "Music")
+  if (!groupedCategories[name]) {
+    for (const [group, cats] of Object.entries(groupedCategories)) {
+      if (cats.includes(name)) {
+        targetGroup = group;
+        break;
+      }
+    }
+  }
+
+  // 2. Convert to lowercase for safe checking
+  const g = targetGroup.toLowerCase();
+
+  // 3. Apply your exact color codes based on the Supercategory
+  if (g.includes("music")) return "#A855F7";
+  if (g.includes("sport")) return "#F43F5E";
+  if (g.includes("active")) return "#F97316";
+  if (g.includes("show")) return "#10B981";
+  if (g.includes("food") || g.includes("restaurant")) return "#3B82F6";
+
+  // Fallback if the category doesn't match any of the above
   return "#FA8900";
 };
 
-// ==========================================
-// MAIN COMPONENT STARTS HERE
-// ==========================================
 const MapScreen = () => {
   const navigation =
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
 
-  // ✅ 1. ALL HOOKS MUST LIVE INSIDE THE COMPONENT
   const [groupedCategories, setGroupedCategories] = useState<
     Record<string, string[]>
   >({});
@@ -105,15 +115,13 @@ const MapScreen = () => {
   const [customEndDate, setCustomEndDate] = useState<string | null>(null);
   const [isSearching, setIsSearching] = useState(false);
 
-  // ✅ 2. TRIGGER THE FETCH WHEN THE SCREEN LOADS
   useFocusEffect(
     useCallback(() => {
+      fetchCategories();
       fetchMapData();
-      fetchCategories(); // MUST CALL IT HERE!
-    }, [])
+    }, []),
   );
 
-  // ✅ 3. FETCH CATEGORIES FUNCTION
   const fetchCategories = async () => {
     try {
       const { data, error } = await supabase
@@ -151,13 +159,29 @@ const MapScreen = () => {
 
       if (eventsData) {
         const formattedEvents = eventsData.map((event) => {
-          const latitude = event.lat || event.venues?.lat || 0;
-          const longitude = event.lng || event.venues?.lng || 0;
+          // Jitter offset to prevent exact stacking
+          const jitterLat = (Math.random() - 0.5) * 0.0005;
+          const jitterLng = (Math.random() - 0.5) * 0.0005;
+
+          const latitude = (event.lat || event.venues?.lat || 0) + jitterLat;
+          const longitude = (event.lng || event.venues?.lng || 0) + jitterLng;
+
+          let safeCategories: string[] = [];
+          if (Array.isArray(event.categories))
+            safeCategories = event.categories;
+          else if (typeof event.categories === "string") {
+            try {
+              safeCategories = JSON.parse(event.categories);
+            } catch {
+              safeCategories = [event.categories];
+            }
+          } else if (event.category) safeCategories = [event.category];
+
           return {
             ...event,
             id: event.id,
             title: event.title,
-            category: event.category || "Other",
+            categories: safeCategories,
             description: event.description,
             lat: latitude,
             lng: longitude,
@@ -172,7 +196,7 @@ const MapScreen = () => {
           };
         });
         const validEvents = formattedEvents.filter(
-          (e) => e.lat !== 0 && e.lng !== 0
+          (e) => e.lat !== 0 && e.lng !== 0,
         );
         setEvents(validEvents);
       }
@@ -183,70 +207,85 @@ const MapScreen = () => {
     }
   };
 
-  // ... (Keep your filteredEvents and the rest of the file exactly the same)
-
   const filteredEvents = useMemo(() => {
-    return events.filter((event) => {
-      const matchesSearch =
-        (event.title || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (event.description || "")
-          .toLowerCase()
-          .includes(searchQuery.toLowerCase());
+    return events
+      .filter((event) => {
+        const matchesSearch =
+          (event.title || "")
+            .toLowerCase()
+            .includes(searchQuery.toLowerCase()) ||
+          (event.description || "")
+            .toLowerCase()
+            .includes(searchQuery.toLowerCase());
 
-      const matchesCategory = selectedCategory
-        ? (event.category || "") === selectedCategory
-        : true;
+        let matchesCategory = true;
+        if (selectedCategory) {
+          const eventCats = Array.isArray(event.categories)
+            ? event.categories
+            : [];
 
-      let matchesTime = true;
-      const eventDate = new Date(event.date);
-      const today = new Date();
-      const startOfToday = new Date(
-        today.getFullYear(),
-        today.getMonth(),
-        today.getDate()
-      );
+          if (groupedCategories[selectedCategory]) {
+            const groupCats = groupedCategories[selectedCategory];
+            matchesCategory = eventCats.some((c: string) =>
+              groupCats.includes(c),
+            );
+          } else {
+            matchesCategory = eventCats.includes(selectedCategory);
+          }
+        }
 
-      if (selectedTime === "Today") {
-        const endOfToday = new Date(
-          startOfToday.getTime() + 24 * 60 * 60 * 1000
+        let matchesTime = true;
+        const eventDate = new Date(event.date);
+        const today = new Date();
+        const startOfToday = new Date(
+          today.getFullYear(),
+          today.getMonth(),
+          today.getDate(),
         );
-        matchesTime = eventDate >= startOfToday && eventDate < endOfToday;
-      } else if (selectedTime === "Tomorrow") {
-        const startOfTomorrow = new Date(
-          startOfToday.getTime() + 24 * 60 * 60 * 1000
-        );
-        const endOfTomorrow = new Date(
-          startOfTomorrow.getTime() + 24 * 60 * 60 * 1000
-        );
-        matchesTime = eventDate >= startOfTomorrow && eventDate < endOfTomorrow;
-      } else if (selectedTime === "This Week") {
-        const endOfWeek = new Date(startOfToday);
-        endOfWeek.setDate(
-          startOfToday.getDate() + (7 - (startOfToday.getDay() || 7))
-        );
-        endOfWeek.setHours(23, 59, 59, 999);
-        matchesTime = eventDate >= startOfToday && eventDate <= endOfWeek;
-      } else if (selectedTime === "This Month") {
-        const endOfMonth = new Date(
-          startOfToday.getFullYear(),
-          startOfToday.getMonth() + 1,
-          0,
-          23,
-          59,
-          59
-        );
-        matchesTime = eventDate >= startOfToday && eventDate <= endOfMonth;
-      } else if (selectedTime === "Custom" && customStartDate) {
-        const start = new Date(customStartDate);
-        const end = customEndDate
-          ? new Date(customEndDate)
-          : new Date(customStartDate);
-        end.setHours(23, 59, 59, 999);
-        matchesTime = eventDate >= start && eventDate <= end;
-      }
 
-      return matchesSearch && matchesCategory && matchesTime;
-    });
+        if (selectedTime === "Today") {
+          const endOfToday = new Date(
+            startOfToday.getTime() + 24 * 60 * 60 * 1000,
+          );
+          matchesTime = eventDate >= startOfToday && eventDate < endOfToday;
+        } else if (selectedTime === "Tomorrow") {
+          const startOfTomorrow = new Date(
+            startOfToday.getTime() + 24 * 60 * 60 * 1000,
+          );
+          const endOfTomorrow = new Date(
+            startOfTomorrow.getTime() + 24 * 60 * 60 * 1000,
+          );
+          matchesTime =
+            eventDate >= startOfTomorrow && eventDate < endOfTomorrow;
+        } else if (selectedTime === "This Week") {
+          const endOfWeek = new Date(startOfToday);
+          endOfWeek.setDate(
+            startOfToday.getDate() + (7 - (startOfToday.getDay() || 7)),
+          );
+          endOfWeek.setHours(23, 59, 59, 999);
+          matchesTime = eventDate >= startOfToday && eventDate <= endOfWeek;
+        } else if (selectedTime === "This Month") {
+          const endOf30Days = new Date(
+            startOfToday.getTime() + 30 * 24 * 60 * 60 * 1000,
+          );
+          endOf30Days.setHours(23, 59, 59, 999);
+          matchesTime = eventDate >= startOfToday && eventDate <= endOf30Days;
+        } else if (selectedTime === "Custom" && customStartDate) {
+          const start = new Date(customStartDate);
+          const end = customEndDate
+            ? new Date(customEndDate)
+            : new Date(customStartDate);
+          end.setHours(23, 59, 59, 999);
+          matchesTime = eventDate >= start && eventDate <= end;
+        }
+
+        return matchesSearch && matchesCategory && matchesTime;
+      })
+      .map((event) => {
+        const primaryCat = event.categories?.[0] || "Other";
+        const markerColor = GET_CATEGORY_COLOR(primaryCat, groupedCategories);
+        return { ...event, markerColor };
+      });
   }, [
     searchQuery,
     selectedCategory,
@@ -254,12 +293,13 @@ const MapScreen = () => {
     customStartDate,
     customEndDate,
     events,
+    groupedCategories,
   ]);
 
   const filteredVenues = useMemo(() => {
     if (!searchQuery) return venues;
     return venues.filter((venue) =>
-      (venue.name || "").toLowerCase().includes(searchQuery.toLowerCase())
+      (venue.name || "").toLowerCase().includes(searchQuery.toLowerCase()),
     );
   }, [searchQuery, venues]);
 
@@ -267,7 +307,7 @@ const MapScreen = () => {
     setSearchQuery(item.title || item.name);
     Keyboard.dismiss();
     setIsSearching(false);
-    if (item.category) {
+    if (item.categories) {
       setSelectedVenue(null);
       setSelectedEvent(item);
     } else {
@@ -288,6 +328,19 @@ const MapScreen = () => {
     }
   };
 
+  // ✅ PROPERLY PLACED MEMOIZED CALLBACKS (Top level of the component!)
+  const handleSelectEvent = useCallback((ev: any) => {
+    setSelectedVenue(null);
+    setSelectedEvent(ev);
+    setIsSearching(false);
+    Keyboard.dismiss();
+  }, []);
+
+  const handleSelectVenue = useCallback((venue: any) => {
+    setSelectedEvent(null);
+    setSelectedVenue(venue);
+  }, []);
+
   const todayDateString = new Date().toISOString().split("T")[0];
 
   return (
@@ -301,16 +354,8 @@ const MapScreen = () => {
       <EventMap
         events={filteredEvents}
         venues={filteredVenues}
-        onSelectEvent={(ev) => {
-          setSelectedVenue(null);
-          setSelectedEvent(ev);
-          setIsSearching(false);
-          Keyboard.dismiss();
-        }}
-        onSelectVenue={(venue) => {
-          setSelectedEvent(null);
-          setSelectedVenue(venue);
-        }}
+        onSelectEvent={handleSelectEvent}
+        onSelectVenue={handleSelectVenue}
         selectedEvent={selectedEvent}
       />
 
@@ -445,7 +490,6 @@ const MapScreen = () => {
             </View>
           )}
 
-          {/* ✅ UPDATED CATEGORY CHIPS (Includes "More") */}
           {!isSearching && (
             <ScrollView
               horizontal
@@ -474,7 +518,7 @@ const MapScreen = () => {
 
               {QUICK_CATEGORIES.map((cat) => {
                 const isSelected = selectedCategory === cat;
-                const color = GET_CATEGORY_COLOR(cat);
+                const color = GET_CATEGORY_COLOR(cat, groupedCategories);
                 return (
                   <TouchableOpacity
                     key={cat}
@@ -500,7 +544,6 @@ const MapScreen = () => {
                 );
               })}
 
-              {/* THE "MORE" BUTTON */}
               <TouchableOpacity
                 onPress={() => setShowCategoryModal(true)}
                 className="mr-4 px-4 py-2 rounded-full border border-dashed border-white/40 bg-[#1E1E1E]/60 flex-row items-center"
@@ -515,11 +558,9 @@ const MapScreen = () => {
         </View>
       </SafeAreaView>
 
-      {/* --- ALL CATEGORIES MODAL (BOTTOM SHEET) --- */}
       <Modal visible={showCategoryModal} transparent animationType="slide">
         <View className="flex-1 justify-end bg-black/70">
           <View className="bg-[#121212] h-[85%] rounded-t-[30px] border-t border-white/10 shadow-2xl">
-            {/* Header */}
             <View className="flex-row justify-between items-center px-6 py-5 border-b border-white/10 bg-[#1E1E1E] rounded-t-[30px]">
               <Text
                 className="text-white text-2xl font-bold"
@@ -535,7 +576,6 @@ const MapScreen = () => {
               </TouchableOpacity>
             </View>
 
-            {/* Scrollable Categories List */}
             <ScrollView
               className="flex-1 px-6 pt-4"
               showsVerticalScrollIndicator={false}
@@ -547,16 +587,17 @@ const MapScreen = () => {
                     key={superCategory}
                     className="mb-6 border-b border-white/5 pb-4"
                   >
-                    {/* Prints: "ACTIVE", "FOOD", etc. */}
                     <Text className="text-gray-400 font-bold mb-3 uppercase tracking-wider text-xs">
                       {superCategory}
                     </Text>
 
                     <View className="flex-row flex-wrap gap-2">
-                      {/* Prints the buttons for Padel, Yoga, etc. */}
                       {subCategories.map((cat) => {
                         const isSelected = selectedCategory === cat;
-                        const color = GET_CATEGORY_COLOR(cat);
+                        const color = GET_CATEGORY_COLOR(
+                          cat,
+                          groupedCategories,
+                        );
 
                         return (
                           <TouchableOpacity
@@ -587,14 +628,13 @@ const MapScreen = () => {
                       })}
                     </View>
                   </View>
-                )
+                ),
               )}
             </ScrollView>
           </View>
         </View>
       </Modal>
 
-      {/* --- CUSTOM DATE CALENDAR MODAL --- */}
       <Modal visible={!!activeDateModal} transparent animationType="slide">
         <View className="flex-1 justify-end bg-black/80">
           <View className="bg-[#1E1E1E] rounded-t-3xl p-4 h-[70%]">

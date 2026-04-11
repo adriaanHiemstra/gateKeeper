@@ -28,7 +28,6 @@ import Animated, {
   withDelay,
   withTiming,
 } from "react-native-reanimated";
-// ✅ IMPORT INTERRUPTION MODES
 import {
   Video,
   ResizeMode,
@@ -38,7 +37,6 @@ import {
 } from "expo-av";
 import { fireGradient } from "../styles/colours";
 
-// ✅ Import the custom hook
 import { useSavedEvent } from "../hooks/useSavedEvent";
 import { useEventFriends } from "../hooks/useEventFriends";
 
@@ -48,8 +46,8 @@ const CARD_HEIGHT = SCREEN_WIDTH * 1.6;
 type EventFeedCardProps = {
   id: string;
   title: string;
-  hostName: string;
-  hostAvatar: ImageSourcePropType;
+  hostName?: string; // Made optional just in case
+  hostAvatar?: ImageSourcePropType; // Made optional
   image: any;
   mediaItems?: any[];
   attendeesCount: number;
@@ -82,7 +80,7 @@ const isVideoFile = (source: any) => {
 };
 
 const EventFeedCard = ({
-  id, // ✅ This is the event ID passed from the home screen
+  id,
   title,
   hostName,
   hostAvatar,
@@ -97,7 +95,6 @@ const EventFeedCard = ({
 }: EventFeedCardProps) => {
   const [isFullScreen, setIsFullScreen] = useState(false);
 
-  // ✅ Bring in the Supabase logic using the Event ID
   const { isSaved, toggleSave } = useSavedEvent(id);
   const { friends } = useEventFriends(id);
 
@@ -110,14 +107,13 @@ const EventFeedCard = ({
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isMuted, setIsMuted] = useState(false);
 
-  // AUDIO FIX FOR EVENTS
   useEffect(() => {
     const enableAudio = async () => {
       try {
         await Audio.setAudioModeAsync({
           playsInSilentModeIOS: true,
           staysActiveInBackground: false,
-          interruptionModeIOS: InterruptionModeIOS.MixWithOthers, // Mix!
+          interruptionModeIOS: InterruptionModeIOS.MixWithOthers,
           interruptionModeAndroid: InterruptionModeAndroid.DuckOthers,
           shouldDuckAndroid: true,
         });
@@ -129,10 +125,8 @@ const EventFeedCard = ({
   }, []);
 
   const handleLike = () => {
-    // Fire the database save function
     toggleSave();
 
-    // If it wasn't saved before (meaning we are saving it right now), trigger the big heart animation
     if (!isSaved) {
       scale.value = 0;
       opacity.value = 1;
@@ -228,7 +222,7 @@ const EventFeedCard = ({
 
           <View className="absolute inset-0 justify-center items-center pointer-events-none">
             <Animated.View style={heartStyle}>
-              <Heart color="#FA8900" size={100} fill="#FA8900" />
+              <Heart color="#FA8900" size={150} fill="#FA8900" />
             </Animated.View>
           </View>
         </Pressable>
@@ -253,37 +247,43 @@ const EventFeedCard = ({
           </View>
 
           <View className="flex-row items-center justify-between mb-6">
-            <TouchableOpacity
-              onPress={onPressHost}
-              className="flex-row items-center"
-            >
-              <Image
-                source={hostAvatar}
-                className="w-10 h-10 rounded-full border-2 border-orange-500 mr-3"
-              />
-              <View>
-                <Text className="text-gray-300 text-xs font-bold uppercase tracking-wider">
-                  Hosted By
-                </Text>
-                <Text
-                  className="text-white text-lg font-bold"
-                  style={{ fontFamily: "Jost-Medium" }}
-                >
-                  {hostName}
-                </Text>
-              </View>
-            </TouchableOpacity>
+            {/* 👇 FIXED: Safely check if hostName exists instead of event object */}
+            {hostName && hostName.trim() !== "" && hostAvatar && (
+              <TouchableOpacity
+                onPress={onPressHost}
+                className="flex-row items-center"
+              >
+                <Image
+                  source={hostAvatar}
+                  className="w-10 h-10 rounded-full border-2 border-orange-500 mr-3"
+                />
+                <View>
+                  <Text className="text-gray-300 text-xs font-bold uppercase tracking-wider">
+                    Hosted By
+                  </Text>
+                  <Text
+                    className="text-white text-lg font-bold"
+                    style={{ fontFamily: "Jost-Medium" }}
+                  >
+                    {hostName}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            )}
 
-            <TouchableOpacity
-              onPress={handleLike}
-              className="bg-white/20 p-3 rounded-full backdrop-blur-md"
-            >
-              <Heart
-                color={isSaved ? "#FA8900" : "white"}
-                fill={isSaved ? "#FA8900" : "none"}
-                size={24}
-              />
-            </TouchableOpacity>
+            {/* If there is no host, we can use flex-end to keep the heart button aligned to the right */}
+            <View className="flex-1 items-end">
+              <TouchableOpacity
+                onPress={handleLike}
+                className="bg-white/20 p-3 rounded-full backdrop-blur-md"
+              >
+                <Heart
+                  color={isSaved ? "#FA8900" : "white"}
+                  fill={isSaved ? "#FA8900" : "none"}
+                  size={32}
+                />
+              </TouchableOpacity>
+            </View>
           </View>
 
           <TouchableOpacity
@@ -309,7 +309,6 @@ const EventFeedCard = ({
 
         {showSocial && (
           <TouchableOpacity
-            // Pass the friends array up to the Home Screen!
             onPress={() => onOpenSocial(friends)}
             activeOpacity={0.8}
             style={{ zIndex: 50 }}
@@ -327,7 +326,7 @@ const EventFeedCard = ({
                           : require("../assets/profile-pic-1.png")
                       }
                       className="w-8 h-8 rounded-full border-2 border-[#121212]"
-                      style={{ marginLeft: i > 0 ? -12 : 0 }} // Creates the overlap effect
+                      style={{ marginLeft: i > 0 ? -12 : 0 }}
                     />
                   ))}
                 </View>
@@ -336,7 +335,6 @@ const EventFeedCard = ({
                 </Text>
               </>
             ) : (
-              // Fallback if no friends are going yet
               <LinearGradient
                 {...fireGradient}
                 className="w-12 h-12 rounded-full items-center justify-center shadow-lg shadow-black/60 border-2 border-white/20"

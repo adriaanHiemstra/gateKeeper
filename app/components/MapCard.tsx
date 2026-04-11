@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import {
   View,
   Text,
@@ -30,8 +30,12 @@ type MapCardProps = {
 
 const MapCard = ({ event, onClose, onViewEvent }: MapCardProps) => {
   const translateY = useSharedValue(height);
+  // ✅ ADDED STATE FOR EXPANDING DESCRIPTION
+  const [isExpanded, setIsExpanded] = useState(false);
 
   useEffect(() => {
+    // Reset expansion state if the user taps a new event
+    setIsExpanded(false);
     translateY.value = withTiming(0, {
       duration: 350,
       easing: Easing.out(Easing.exp),
@@ -47,7 +51,7 @@ const MapCard = ({ event, onClose, onViewEvent }: MapCardProps) => {
       },
       () => {
         runOnJS(onClose)();
-      }
+      },
     );
   };
 
@@ -78,13 +82,13 @@ const MapCard = ({ event, onClose, onViewEvent }: MapCardProps) => {
 
         <TouchableOpacity
           onPress={closeCard}
-          className="absolute top-4 right-4 bg-white/10 p-1.5 rounded-full"
+          className="absolute top-4 right-4 bg-white/10 p-1.5 rounded-full z-50"
         >
           <X color="#ccc" size={20} />
         </TouchableOpacity>
 
         <View className="px-6 pt-2">
-          <View className="flex-row items-center mb-4">
+          <View className="flex-row items-center mb-4 pr-6">
             <Image
               source={event.image}
               className="w-20 h-20 rounded-xl mr-4"
@@ -98,24 +102,34 @@ const MapCard = ({ event, onClose, onViewEvent }: MapCardProps) => {
                 {event.title}
               </Text>
               <View className="flex-row items-center">
-                <Clock color="#FA8900" size={14} className="ml-2" />
-                <Text className="text-gray-400 text-sm ml-2">{event.time}</Text>
+                <Clock color="#FA8900" size={14} className="mr-2" />
+                <Text className="text-gray-400 text-sm">{event.time}</Text>
               </View>
               <View className="flex-row items-center mt-1">
-                <MapPin color="#FA8900" size={14} className="ml-2" />
-                <Text className="text-gray-400 text-sm ml-2">
-                  {event.location}
-                </Text>
+                <MapPin color="#FA8900" size={14} className="mr-2" />
+                <Text className="text-gray-400 text-sm">{event.location}</Text>
               </View>
             </View>
           </View>
 
-          <Text
-            className="text-gray-300 text-sm mb-6 leading-5"
-            numberOfLines={2}
+          {/* ✅ CLICKABLE DESCRIPTION TO EXPAND */}
+          <TouchableOpacity
+            activeOpacity={0.7}
+            onPress={() => setIsExpanded(!isExpanded)}
+            className="mb-6"
           >
-            {event.description}
-          </Text>
+            <Text
+              className="text-gray-300 text-sm leading-5"
+              numberOfLines={isExpanded ? undefined : 2}
+            >
+              {event.description}
+            </Text>
+            {!isExpanded && event.description?.length > 80 && (
+              <Text className="text-orange-400 text-xs mt-1 font-bold">
+                Read more
+              </Text>
+            )}
+          </TouchableOpacity>
 
           <TouchableOpacity
             activeOpacity={0.9}

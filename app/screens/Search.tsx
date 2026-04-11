@@ -102,13 +102,13 @@ const GET_CATEGORY_COLOR = (category: string) => {
     return "#F97316";
   if (
     ["nature", "outdoor", "garden", "market", "food", "farmer"].some((x) =>
-      cat.includes(x)
+      cat.includes(x),
     )
   )
     return "#10B981";
   if (
     ["comedy", "art", "theater", "show", "cinema", "magic"].some((x) =>
-      cat.includes(x)
+      cat.includes(x),
     )
   )
     return "#F43F5E";
@@ -223,7 +223,7 @@ const SearchScreen = () => {
 
   // Filter State
   const [availableTags, setAvailableTags] = useState<Record<string, string[]>>(
-    {}
+    {},
   );
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [activeTimeFilters, setActiveTimeFilters] = useState<string[]>([]);
@@ -276,7 +276,7 @@ const SearchScreen = () => {
       let dbQuery = supabase
         .from("events")
         .select(
-          `*, profiles:host_id ( username, avatar_url ), venues:venue_id ( name, address )`
+          `*, profiles:host_id ( username, avatar_url ), venues:venue_id ( name, address )`,
         )
         .gte("date", now);
 
@@ -292,14 +292,14 @@ const SearchScreen = () => {
           dbQuery = dbQuery.or(conditions);
         } else {
           dbQuery = dbQuery.or(
-            `title.ilike.%${text}%,description.ilike.%${text}%`
+            `title.ilike.%${text}%,description.ilike.%${text}%`,
           );
         }
       }
 
       if (selectedTags.length > 0) {
         const orConditions = selectedTags.map(
-          (tag) => `category.ilike.%${tag}%`
+          (tag) => `category.ilike.%${tag}%`,
         );
         dbQuery = dbQuery.or(orConditions.join(","));
       }
@@ -357,7 +357,7 @@ const SearchScreen = () => {
   const checkActiveFilters = (
     tags: string[],
     times: string[],
-    customDate: boolean
+    customDate: boolean,
   ) => {
     return tags.length > 0 || times.length > 0 || customDate;
   };
@@ -369,7 +369,7 @@ const SearchScreen = () => {
     const hasFilters = checkActiveFilters(
       selectedTags,
       activeTimeFilters,
-      isCustomDateActive
+      isCustomDateActive,
     );
     if (hasFilters) {
       setIsQueryActive(false);
@@ -412,7 +412,7 @@ const SearchScreen = () => {
       const hasFilters = checkActiveFilters(
         newTags,
         activeTimeFilters,
-        isCustomDateActive
+        isCustomDateActive,
       );
 
       if (hasFilters) {
@@ -454,7 +454,7 @@ const SearchScreen = () => {
       const hasFilters = checkActiveFilters(
         selectedTags,
         activeTimeFilters,
-        false
+        false,
       );
       if (!hasFilters && query.trim().length > 0) setIsQueryActive(true);
     } else {
@@ -471,7 +471,7 @@ const SearchScreen = () => {
     const filtered: Record<string, string[]> = {};
     Object.keys(availableTags).forEach((group) => {
       const matchingTags = availableTags[group].filter((tag) =>
-        tag.toLowerCase().includes(query.toLowerCase())
+        tag.toLowerCase().includes(query.toLowerCase()),
       );
       if (matchingTags.length > 0) {
         filtered[group] = matchingTags;
