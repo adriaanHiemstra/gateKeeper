@@ -59,11 +59,10 @@ const GET_CATEGORY_COLOR = (
   name: string,
   groupedCategories: Record<string, string[]>,
 ) => {
-  if (!name) return "#FA8900"; // Default GateKeeper Orange
+  if (!name) return "#FA8900";
 
   let targetGroup = name;
 
-  // 1. If 'name' is a specific category (e.g., "Techno"), find its Supercategory (e.g., "Music")
   if (!groupedCategories[name]) {
     for (const [group, cats] of Object.entries(groupedCategories)) {
       if (cats.includes(name)) {
@@ -73,18 +72,42 @@ const GET_CATEGORY_COLOR = (
     }
   }
 
-  // 2. Convert to lowercase for safe checking
   const g = targetGroup.toLowerCase();
-
-  // 3. Apply your exact color codes based on the Supercategory
   if (g.includes("music")) return "#A855F7";
   if (g.includes("sport")) return "#F43F5E";
   if (g.includes("active")) return "#F97316";
   if (g.includes("show")) return "#10B981";
   if (g.includes("food") || g.includes("restaurant")) return "#3B82F6";
 
-  // Fallback if the category doesn't match any of the above
   return "#FA8900";
+};
+
+// 🔥 MAPS SUPER-CATEGORIES TO YOUR NEW PNG ICONS
+const GET_CATEGORY_ICON = (
+  name: string,
+  groupedCategories: Record<string, string[]>,
+) => {
+  let targetGroup = name || "";
+
+  if (name && !groupedCategories[name]) {
+    for (const [group, cats] of Object.entries(groupedCategories)) {
+      if (cats.includes(name)) {
+        targetGroup = group;
+        break;
+      }
+    }
+  }
+
+  const g = targetGroup.toLowerCase();
+  if (g.includes("music")) return require("../assets/icons/music-location.png");
+  if (g.includes("sport"))
+    return require("../assets/icons/sports-location.png");
+  if (g.includes("show")) return require("../assets/icons/shows-location.png");
+  if (g.includes("food") || g.includes("restaurant"))
+    return require("../assets/icons/food-location.png");
+
+  // Default fallback for everything else
+  return require("../assets/icons/activity-location.png");
 };
 
 const MapScreen = () => {
@@ -284,7 +307,8 @@ const MapScreen = () => {
       .map((event) => {
         const primaryCat = event.categories?.[0] || "Other";
         const markerColor = GET_CATEGORY_COLOR(primaryCat, groupedCategories);
-        return { ...event, markerColor };
+        const markerIcon = GET_CATEGORY_ICON(primaryCat, groupedCategories); // 👈 ADD THIS
+        return { ...event, markerColor, markerIcon }; // 👈 PASS IT ALONG
       });
   }, [
     searchQuery,

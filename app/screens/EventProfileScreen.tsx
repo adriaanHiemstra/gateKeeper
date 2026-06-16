@@ -71,6 +71,34 @@ const isVideoFile = (source: any) => {
   return false;
 };
 
+// ✅ STRICT SUPER-CATEGORY COLOR ENGINE (Synced from Map)
+const GET_CATEGORY_COLOR = (
+  name: string,
+  groupedCategories: Record<string, string[]>,
+) => {
+  if (!name) return "#FA8900";
+
+  let targetGroup = name;
+
+  if (!groupedCategories[name]) {
+    for (const [group, cats] of Object.entries(groupedCategories)) {
+      if (cats.includes(name)) {
+        targetGroup = group;
+        break;
+      }
+    }
+  }
+
+  const g = targetGroup.toLowerCase();
+  if (g.includes("music")) return "#A855F7";
+  if (g.includes("sport")) return "#F43F5E";
+  if (g.includes("active")) return "#F97316";
+  if (g.includes("show")) return "#10B981";
+  if (g.includes("food") || g.includes("restaurant")) return "#3B82F6";
+
+  return "#FA8900";
+};
+
 const EventProfileScreen = () => {
   const navigation =
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
@@ -81,6 +109,9 @@ const EventProfileScreen = () => {
 
   // LIVE STATE
   const [eventData, setEventData] = useState<any>(null);
+  const [groupedCategories, setGroupedCategories] = useState<
+    Record<string, string[]>
+  >({});
   const [loading, setLoading] = useState(true);
 
   // --- TRAPDOOR STATE ---
@@ -91,15 +122,13 @@ const EventProfileScreen = () => {
   // --- THE TRAPDOOR LISTENER ---
   useEffect(() => {
     const subscription = AppState.addEventListener("change", (nextAppState) => {
-      // If the app is coming from the background back to the foreground...
       if (
         appState.current.match(/inactive|background/) &&
         nextAppState === "active"
       ) {
-        // ...and we were waiting for them to return from a ticket link
         if (awaitingTicketReturn) {
-          setShowTicketModal(true); // Spring the trap!
-          setAwaitingTicketReturn(false); // Reset the flag
+          setShowTicketModal(true);
+          setAwaitingTicketReturn(false);
         }
       }
       appState.current = nextAppState;
@@ -117,30 +146,24 @@ const EventProfileScreen = () => {
   // Initialize the custom hook for saving the event
   const { isSaved, toggleSave } = useSavedEvent(eventId);
 
-  // 🔥 THE NATIVE SHARE FUNCTION
   const handleShare = async () => {
     try {
-      // The link they will click. (We'll use a placeholder domain for now).
       const shareUrl = `https://gatekeeper.app/event/${eventId}`;
       const message = `Yo, I'm checking out ${eventName} on GateKeeper! Grab a ticket and let's go: ${shareUrl}`;
 
       const result = await Share.share({
         message: message,
-        // iOS allows you to pass a URL separately so it formats nicely in iMessage
         url: shareUrl,
         title: `Check out ${eventName}`,
       });
 
       if (result.action === Share.sharedAction) {
         if (result.activityType) {
-          // Shared via specific app (e.g. WhatsApp)
           console.log("Shared via", result.activityType);
         } else {
-          // Shared successfully
           console.log("Share successful!");
         }
       } else if (result.action === Share.dismissedAction) {
-        // User backed out of the share menu
         console.log("Share dismissed");
       }
     } catch (error: any) {
@@ -155,7 +178,7 @@ const EventProfileScreen = () => {
 
       const fetchData = async () => {
         try {
-          // Notice we are pulling the host's profile data too!
+          // Fetch Event Data
           const { data: event, error: eventError } = await supabase
             .from("events")
             .select(
@@ -164,8 +187,24 @@ const EventProfileScreen = () => {
             .eq("id", eventId)
             .single();
 
-          if (!eventError) {
-            setEventData(event);
+          if (!eventError) setEventData(event);
+
+          // Fetch Category Groups for the color engine
+          const { data: categoryData } = await supabase
+            .from("categories")
+            .select("name, group_name");
+
+          if (categoryData) {
+            const grouped = categoryData.reduce(
+              (acc: Record<string, string[]>, curr) => {
+                const group = curr.group_name || "Other";
+                if (!acc[group]) acc[group] = [];
+                acc[group].push(curr.name);
+                return acc;
+              },
+              {},
+            );
+            setGroupedCategories(grouped);
           }
         } catch (err) {
           console.log("Error fetching event details:", err);
@@ -183,13 +222,11 @@ const EventProfileScreen = () => {
   const eventName =
     displayEvent?.title || displayEvent?.eventName || "Loading...";
 
-  // Dynamic Host Data
   const hostName = displayEvent?.profiles?.username;
   const hostAvatar = displayEvent?.profiles?.avatar_url
     ? { uri: displayEvent.profiles.avatar_url }
     : require("../assets/profile-pic-1.png");
 
-  // Description Trimmer
   const rawDescription =
     displayEvent?.description || "Join us for an unforgettable experience!";
   const displayDescription = rawDescription.split(/Date:/i)[0].trim();
@@ -213,7 +250,6 @@ const EventProfileScreen = () => {
   const galleryImages =
     rawImages && rawImages.length > 0 ? rawImages : [banner];
 
-  // Pricing Logic
   const lowestPrice = displayEvent?.lowest_price;
   const tiers = displayEvent?.ticket_tiers || [];
   const rawPriceString = tiers.length > 0 ? tiers[0].price : "TBA";
@@ -222,7 +258,7 @@ const EventProfileScreen = () => {
 
   let displayPrice = "TBA";
   if (isFree) {
-    displayPrice = "FREE";
+    displayPrice = "FIND OUT MORE";
   } else if (lowestPrice !== null && lowestPrice !== undefined) {
     displayPrice = `From R${lowestPrice}`;
   } else {
@@ -233,7 +269,21 @@ const EventProfileScreen = () => {
   }
 
   const ticketUrl = displayEvent?.ticket_url;
-  const tags = displayEvent?.tags || params?.tags || ["Events"];
+
+  // 🔥 SAFELY PARSE CATEGORIES FOR TAGS
+  let parsedTags: string[] = [];
+  const rawCats =
+    displayEvent?.categories || displayEvent?.tags || params?.tags;
+  if (Array.isArray(rawCats)) {
+    parsedTags = rawCats;
+  } else if (typeof rawCats === "string") {
+    try {
+      parsedTags = JSON.parse(rawCats);
+    } catch {
+      parsedTags = [rawCats];
+    }
+  }
+  const tags = parsedTags.length > 0 ? parsedTags : [];
 
   useEffect(() => {
     Audio.setAudioModeAsync({
@@ -260,10 +310,10 @@ const EventProfileScreen = () => {
 
   const handleTicketPress = () => {
     if (ticketUrl) {
-      setAwaitingTicketReturn(true); // <--- SET THE FLAG!
+      setAwaitingTicketReturn(true);
       Linking.openURL(ticketUrl).catch((err) => {
         console.error("Couldn't load page", err);
-        setAwaitingTicketReturn(false); // Turn it off if the link failed
+        setAwaitingTicketReturn(false);
       });
     } else if (eventId) {
       navigation.navigate("PurchaseTicket", {
@@ -278,10 +328,8 @@ const EventProfileScreen = () => {
     }
   };
 
-  // 🔥 ZERO COST MAP LAUNCHER
   const openNativeMaps = () => {
     if (displayEvent?.lat && displayEvent?.lng) {
-      // If we have coordinates, drop a pin exactly there
       const scheme = Platform.select({
         ios: "maps:0,0?q=",
         android: "geo:0,0?q=",
@@ -294,7 +342,6 @@ const EventProfileScreen = () => {
       });
       Linking.openURL(url as string);
     } else {
-      // If no coordinates, just search the text string
       const scheme = Platform.OS === "ios" ? "maps:0,0?q=" : "geo:0,0?q=";
       Linking.openURL(`${scheme}${encodeURIComponent(locationText)}`);
     }
@@ -391,7 +438,6 @@ const EventProfileScreen = () => {
       } = await supabase.auth.getUser();
       if (!user || !eventId) return;
 
-      // Upsert the Level 3 Intent
       const { error } = await supabase.from("event_interactions").upsert(
         {
           user_id: user.id,
@@ -476,6 +522,7 @@ const EventProfileScreen = () => {
               </View>
             </View>
           </Modal>
+
           {/* HEADER GALLERY */}
           <View className="relative h-80 w-full mb-6">
             <ScrollView
@@ -544,25 +591,28 @@ const EventProfileScreen = () => {
 
           {/* TITLE & HOST */}
           <View className="px-6 mb-6 -mt-12">
-            {/* 👇 LOCKED DOWN CONDITIONAL HOST PILL */}
-            {displayEvent?.host_id && hostName && hostName.trim() !== "" && (
-              <TouchableOpacity
-                onPress={() =>
-                  navigation.navigate("EventHostProfile", {
-                    hostId: displayEvent.host_id,
-                  })
-                }
-                className="flex-row items-center bg-[#1E1E1E] self-start px-3 py-1.5 rounded-full border border-white/10 mb-4 shadow-lg"
-              >
-                <Image
-                  source={hostAvatar}
-                  className="w-6 h-6 rounded-full mr-2"
-                />
-                <Text className="text-gray-300 text-sm font-bold pr-1">
-                  {hostName}
-                </Text>
-              </TouchableOpacity>
-            )}
+            {/* 👇 UPDATED: Hides the host pill if there's an external ticket link */}
+            {displayEvent?.host_id &&
+              hostName &&
+              hostName.trim() !== "" &&
+              !ticketUrl && (
+                <TouchableOpacity
+                  onPress={() =>
+                    navigation.navigate("EventHostProfile", {
+                      hostId: displayEvent.host_id,
+                    })
+                  }
+                  className="flex-row items-center bg-[#1E1E1E] self-start px-3 py-1.5 rounded-full border border-white/10 mb-4 shadow-lg"
+                >
+                  <Image
+                    source={hostAvatar}
+                    className="w-6 h-6 rounded-full mr-2"
+                  />
+                  <Text className="text-gray-300 text-sm font-bold pr-1">
+                    {hostName}
+                  </Text>
+                </TouchableOpacity>
+              )}
 
             <Text
               className="text-white text-4xl font-bold mb-2 leading-tight"
@@ -570,15 +620,29 @@ const EventProfileScreen = () => {
             >
               {eventName}
             </Text>
-            <View className="flex-row flex-wrap gap-2 mt-2">
-              {tags.map((tag: string, i: number) => (
-                <View
-                  key={i}
-                  className="bg-white/10 px-3 py-1 rounded-lg border border-white/5"
-                >
-                  <Text className="text-white text-xs font-bold">{tag}</Text>
-                </View>
-              ))}
+
+            {/* 🔥 DYNAMIC COLORED TAGS */}
+            <View className="flex-row flex-wrap gap-2 mt-3">
+              {tags.map((tag: string, i: number) => {
+                const color = GET_CATEGORY_COLOR(tag, groupedCategories);
+                return (
+                  <View
+                    key={i}
+                    style={{
+                      backgroundColor: `${color}15`, // 15% opacity tint
+                      borderColor: `${color}40`, // 40% opacity border
+                    }}
+                    className="px-3 py-1 rounded-lg border"
+                  >
+                    <Text
+                      style={{ color: color }}
+                      className="text-xs font-bold uppercase tracking-wider"
+                    >
+                      {tag}
+                    </Text>
+                  </View>
+                );
+              })}
             </View>
           </View>
 
@@ -596,7 +660,6 @@ const EventProfileScreen = () => {
               </View>
             </View>
 
-            {/* UPDATED LOCATION ROW - NOW CLICKS TO NATIVE MAPS */}
             <View className="flex-row items-center">
               <View className="bg-blue-500/20 p-3 rounded-xl mr-4">
                 <MapPin color="#60A5FA" size={24} />
@@ -660,7 +723,7 @@ const EventProfileScreen = () => {
                 style={{ fontFamily: "Jost-Medium" }}
               >
                 {isFree
-                  ? "FREE EVENT"
+                  ? "GET TICKETS"
                   : ticketUrl
                     ? "BUY ONLINE"
                     : "BUY TICKETS"}

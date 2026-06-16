@@ -55,7 +55,6 @@ if (
 }
 
 // --- 1. DATA & COLORS ---
-
 const RAINBOW_MESH: [string, string, ...string[]] = [
   "#A855F7",
   "#F43F5E",
@@ -66,53 +65,32 @@ const RAINBOW_MESH: [string, string, ...string[]] = [
 
 const TIME_FILTERS = ["Today", "Tomorrow", "This Weekend", "This Month"];
 
-// --- HELPERS ---
+// 🔥 STRICT SUPER-CATEGORY COLOR ENGINE
+const GET_CATEGORY_COLOR = (
+  name: string,
+  groupedCategories: Record<string, string[]>,
+) => {
+  if (!name) return "#FA8900";
 
-const GET_CATEGORY_COLOR = (category: string) => {
-  const cat = (category || "").toLowerCase();
-  if (
-    [
-      "music",
-      "techno",
-      "house",
-      "edm",
-      "amapiano",
-      "jazz",
-      "rock",
-      "dnb",
-      "electronic",
-      "psytrance",
-      "afrobeats",
-    ].some((x) => cat.includes(x))
-  )
-    return "#A855F7";
-  if (
-    [
-      "sport",
-      "rugby",
-      "soccer",
-      "cricket",
-      "run",
-      "hike",
-      "tennis",
-      "yoga",
-      "surf",
-    ].some((x) => cat.includes(x))
-  )
-    return "#F97316";
-  if (
-    ["nature", "outdoor", "garden", "market", "food", "farmer"].some((x) =>
-      cat.includes(x),
-    )
-  )
-    return "#10B981";
-  if (
-    ["comedy", "art", "theater", "show", "cinema", "magic"].some((x) =>
-      cat.includes(x),
-    )
-  )
-    return "#F43F5E";
-  return "#3B82F6";
+  let targetGroup = name;
+
+  if (!groupedCategories[name]) {
+    for (const [group, cats] of Object.entries(groupedCategories)) {
+      if (cats.includes(name)) {
+        targetGroup = group;
+        break;
+      }
+    }
+  }
+
+  const g = targetGroup.toLowerCase();
+  if (g.includes("music")) return "#A855F7";
+  if (g.includes("sport")) return "#F43F5E";
+  if (g.includes("active")) return "#F97316";
+  if (g.includes("show")) return "#10B981";
+  if (g.includes("food") || g.includes("restaurant")) return "#3B82F6";
+
+  return "#FA8900";
 };
 
 const getDateRangeForFilter = (filter: string) => {
@@ -153,27 +131,19 @@ const AnimatedFilterBubble = ({
   isSelected,
   onPress,
 }: any) => {
-  // We animate a value from 0 to 1
   const wobbleAnim = useRef(new Animated.Value(0)).current;
 
   const handlePress = () => {
-    // 1. Subtle Haptics
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-
-    // 2. Perform Action Immediately
     onPress();
-
-    // 3. The "Jostle" Animation
     wobbleAnim.setValue(0);
     Animated.timing(wobbleAnim, {
       toValue: 1,
-      duration: 500, // Takes a moment to "settle"
+      duration: 500,
       useNativeDriver: true,
     }).start();
   };
 
-  // Interpolate 0 -> 1 into a Tilt/Wobble sequence
-  // "0deg" -> "-5deg" (Tilt Left) -> "5deg" (Tilt Right) -> "-2deg" (Settle) -> "0deg"
   const spin = wobbleAnim.interpolate({
     inputRange: [0, 0.2, 0.4, 0.6, 0.8, 1],
     outputRange: ["0deg", "-10deg", "10deg", "-4deg", "4deg", "0deg"],
@@ -185,7 +155,6 @@ const AnimatedFilterBubble = ({
     >
       <TouchableOpacity
         onPress={handlePress}
-        // Increases touch area for easier tapping
         hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
         activeOpacity={0.7}
         style={{
@@ -240,7 +209,6 @@ const SearchScreen = () => {
   const [markedDates, setMarkedDates] = useState<any>({});
   const [isCustomDateActive, setIsCustomDateActive] = useState(false);
 
-  // --- 0. INITIAL FETCH (CATEGORIES) ---
   useEffect(() => {
     const fetchCategories = async () => {
       try {
@@ -278,8 +246,10 @@ const SearchScreen = () => {
         .select(
           `*, profiles:host_id ( username, avatar_url ), venues:venue_id ( name, address )`,
         )
-        .gte("date", now);
+        .gte("date", now)
+        .eq("is_public", true);
 
+      // A. TEXT SEARCH
       if (query.trim() && isQueryActive) {
         const text = query.trim();
         const searchTerms = text.split(" ");
@@ -297,13 +267,7 @@ const SearchScreen = () => {
         }
       }
 
-      if (selectedTags.length > 0) {
-        const orConditions = selectedTags.map(
-          (tag) => `category.ilike.%${tag}%`,
-        );
-        dbQuery = dbQuery.or(orConditions.join(","));
-      }
-
+      // B. DATE SEARCH
       let earliestStart: Date | null = null;
       let latestEnd: Date | null = null;
 
@@ -332,7 +296,40 @@ const SearchScreen = () => {
       const { data, error } = await dbQuery;
 
       if (error) throw error;
-      setResults(data || []);
+
+      // 🔥 C. STRICT TAG SEARCH (Client-Side to bypass Database Array Errors!)
+      let finalResults = data || [];
+
+      if (selectedTags.length > 0) {
+        finalResults = finalResults.filter((event) => {
+          // 1. Safely extract all tags into a bulletproof array
+          let safeCategories: string[] = [];
+
+          if (Array.isArray(event.categories)) {
+            safeCategories = [...event.categories];
+          } else if (typeof event.categories === "string") {
+            try {
+              safeCategories = JSON.parse(event.categories);
+            } catch {
+              safeCategories = [event.categories];
+            }
+          }
+
+          if (event.category) {
+            safeCategories.push(event.category);
+          }
+
+          const lowerSafeCats = safeCategories.map((c) => c.toLowerCase());
+
+          // 2. Strict Filter: If the selected tag exists in their array, keep them!
+          return selectedTags.some((tag) => {
+            const lowerTag = tag.toLowerCase();
+            return lowerSafeCats.some((c) => c.includes(lowerTag));
+          });
+        });
+      }
+
+      setResults(finalResults);
     } catch (err) {
       console.log("Search Error:", err);
     } finally {
@@ -353,7 +350,6 @@ const SearchScreen = () => {
   }, [fetchEvents]);
 
   // --- ACTIONS ---
-
   const checkActiveFilters = (
     tags: string[],
     times: string[],
@@ -480,45 +476,58 @@ const SearchScreen = () => {
     return filtered;
   }, [availableTags, query]);
 
-  const renderEventItem = ({ item }: { item: any }) => (
-    <TouchableOpacity
-      activeOpacity={0.9}
-      className="bg-black relative mb-1"
-      style={{ width: ITEM_WIDTH, height: ITEM_WIDTH * 1.25 }}
-      onPress={() => setSelectedEvent(item)}
-    >
-      <Image
-        source={
-          item.banner_url
-            ? { uri: item.banner_url }
-            : require("../assets/imagePlaceHolder1.png")
-        }
-        className="w-full h-full opacity-80"
-        resizeMode="cover"
-      />
-      <LinearGradient
-        colors={["transparent", "rgba(0,0,0,0.9)"]}
-        className="absolute bottom-0 left-0 right-0 p-4"
+  const renderEventItem = ({ item }: { item: any }) => {
+    let primaryCat = item.category;
+    if (!primaryCat && item.categories) {
+      try {
+        primaryCat = Array.isArray(item.categories)
+          ? item.categories[0]
+          : JSON.parse(item.categories)[0];
+      } catch {
+        primaryCat = "Event";
+      }
+    }
+
+    return (
+      <TouchableOpacity
+        activeOpacity={0.9}
+        className="bg-black relative mb-1"
+        style={{ width: ITEM_WIDTH, height: ITEM_WIDTH * 1.25 }}
+        onPress={() => setSelectedEvent(item)}
       >
-        <Text
-          className="text-white font-bold text-xl shadow-black"
-          numberOfLines={2}
-          style={{ fontFamily: "Jost-Medium" }}
+        <Image
+          source={
+            item.banner_url
+              ? { uri: item.banner_url }
+              : require("../assets/imagePlaceHolder1.png")
+          }
+          className="w-full h-full opacity-80"
+          resizeMode="cover"
+        />
+        <LinearGradient
+          colors={["transparent", "rgba(0,0,0,0.9)"]}
+          className="absolute bottom-0 left-0 right-0 p-4"
         >
-          {item.title}
-        </Text>
-        <Text
-          className="text-xs font-bold uppercase tracking-wider mt-1"
-          style={{ color: GET_CATEGORY_COLOR(item.category) }}
-        >
-          {item.category || "Event"}
-        </Text>
-        <Text className="text-gray-400 text-xs mt-1">
-          {new Date(item.date).toLocaleDateString()}
-        </Text>
-      </LinearGradient>
-    </TouchableOpacity>
-  );
+          <Text
+            className="text-white font-bold text-xl shadow-black"
+            numberOfLines={2}
+            style={{ fontFamily: "Jost-Medium" }}
+          >
+            {item.title}
+          </Text>
+          <Text
+            className="text-xs font-bold uppercase tracking-wider mt-1"
+            style={{ color: GET_CATEGORY_COLOR(primaryCat, availableTags) }}
+          >
+            {primaryCat || "Event"}
+          </Text>
+          <Text className="text-gray-400 text-xs mt-1">
+            {new Date(item.date).toLocaleDateString()}
+          </Text>
+        </LinearGradient>
+      </TouchableOpacity>
+    );
+  };
 
   return (
     <View className="flex-1 bg-[#121212]">
@@ -583,7 +592,7 @@ const SearchScreen = () => {
                     paddingTop: 10,
                     paddingHorizontal: 16,
                   }}
-                  keyboardShouldPersistTaps="always" // Ensures tap registers immediately
+                  keyboardShouldPersistTaps="always"
                 >
                   <Text className="text-gray-400 text-sm font-bold uppercase mb-4 ml-1">
                     Explore Interests
@@ -655,7 +664,7 @@ const SearchScreen = () => {
                               key={tag}
                               label={tag}
                               isSelected={selectedTags.includes(tag)}
-                              color={GET_CATEGORY_COLOR(tag)}
+                              color={GET_CATEGORY_COLOR(tag, availableTags)}
                               onPress={() => toggleTag(tag)}
                             />
                           ))}
@@ -761,9 +770,8 @@ const SearchScreen = () => {
                         </TouchableOpacity>
                       )}
 
-                      {/* We use standard Touchable here */}
                       {selectedTags.map((tag) => {
-                        const color = GET_CATEGORY_COLOR(tag);
+                        const color = GET_CATEGORY_COLOR(tag, availableTags);
                         return (
                           <TouchableOpacity
                             key={tag}
@@ -960,18 +968,21 @@ const SearchScreen = () => {
               <EventFeedCard
                 id={selectedEvent.id}
                 title={selectedEvent.title}
-                hostName={selectedEvent.profiles?.username || "Host"}
+                hostName={selectedEvent.profiles?.username || ""}
                 hostAvatar={selectedEvent.profiles?.avatar_url}
                 image={selectedEvent.banner_url}
                 attendeesCount={100}
                 showSocial={false}
                 disableTap={false}
+                tags={selectedEvent.categories || [selectedEvent.category]}
                 onOpenSocial={() => {}}
                 onPressHost={() => {
-                  setSelectedEvent(null);
-                  navigation.navigate("EventHostProfile", {
-                    hostId: selectedEvent.host_id,
-                  });
+                  if (selectedEvent.host_id) {
+                    setSelectedEvent(null);
+                    navigation.navigate("EventHostProfile", {
+                      hostId: selectedEvent.host_id,
+                    });
+                  }
                 }}
                 onViewEvent={() => {
                   setSelectedEvent(null);
