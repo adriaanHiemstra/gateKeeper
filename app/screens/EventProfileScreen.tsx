@@ -252,7 +252,9 @@ const EventProfileScreen = () => {
 
   const lowestPrice = displayEvent?.lowest_price;
   const tiers = displayEvent?.ticket_tiers || [];
-  const rawPriceString = tiers.length > 0 ? tiers[0].price : "TBA";
+  const rawPriceString = (tiers.length > 0 && tiers[0].price != null) 
+    ? String(tiers[0].price) 
+    : "TBA";
   const isFree =
     lowestPrice === 0 || rawPriceString.toLowerCase().includes("free");
 
