@@ -50,22 +50,18 @@ const EventStatsScreen = () => {
     }, [])
   );
 
-  const fetchAnalytics = async () => {
+const fetchAnalytics = async () => {
     try {
       setLoading(true);
-      // 1. Find out who is currently logged in
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      // 2. Fetch all events belonging to this host
       const { data: events, error: eventError } = await supabase
         .from("events")
         .select("*")
         .eq("host_id", user.id);
 
       if (eventError) throw eventError;
-
-      // If they have no events, stop here
       if (!events || events.length === 0) {
         setEventsDB([]);
         return;
@@ -73,11 +69,11 @@ const EventStatsScreen = () => {
 
       const eventIds = events.map((e) => e.id);
 
-      // 3. Fetch all valid tickets and their pricing tiers for these events
+      // 🚨 UPDATED FETCH: We join the profiles table to get gender & dob!
       const [ticketsRes, tiersRes] = await Promise.all([
         supabase
           .from("tickets")
-          .select("event_id, tier_id")
+          .select("event_id, tier_id, purchased_at, profiles(gender, dob)")
           .in("event_id", eventIds)
           .eq("status", "valid"),
         supabase
@@ -91,43 +87,100 @@ const EventStatsScreen = () => {
 
       let totalGlobalRevenue = 0;
       let totalGlobalTickets = 0;
+      let globalRevenueArray = [0, 0, 0, 0, 0, 0, 0];
+      let globalGender = { m: 0, f: 0 };
+      let globalAgeBuckets: any = { "18-20": 0, "21-25": 0, "26-30": 0, "31-40": 0, "40+": 0 };
 
-      // 4. Calculate stats for each individual event
+      // Helper to calculate age from DOB
+      const calculateAge = (dob: string) => {
+        const diff = Date.now() - new Date(dob).getTime();
+        return Math.floor(diff / (1000 * 60 * 60 * 24 * 365.25));
+      };
+
       const formattedEvents = events.map(event => {
         const eventTickets = allTickets.filter(t => t.event_id === event.id);
         
-        // Calculate revenue by matching each ticket to its tier price
+        let revenueArray = [0, 0, 0, 0, 0, 0, 0]; // Mon - Sun
+        let maleCount = 0; let femaleCount = 0;
+        let ageBuckets: any = { "18-20": 0, "21-25": 0, "26-30": 0, "31-40": 0, "40+": 0 };
+        
         const eventRevenue = eventTickets.reduce((sum, ticket) => {
           const tier = allTiers.find((t) => t.id === ticket.tier_id);
-          return sum + (Number(tier?.price) || 0);
+          const price = Number(tier?.price) || 0;
+          
+          // 📊 TREND LOGIC: Map purchase date to Mon-Sun index (0-6)
+          if (ticket.purchased_at) {
+             const date = new Date(ticket.purchased_at);
+             const dayIndex = (date.getDay() + 6) % 7; 
+             revenueArray[dayIndex] += price;
+             globalRevenueArray[dayIndex] += price;
+          }
+
+          // 🧑‍🤝‍🧑 DEMOGRAPHICS LOGIC
+          const profile: any = ticket.profiles;
+          if (profile) {
+             // Gender
+             if (profile.gender?.toLowerCase() === 'male' || profile.gender?.toLowerCase() === 'm') { maleCount++; globalGender.m++; }
+             else if (profile.gender?.toLowerCase() === 'female' || profile.gender?.toLowerCase() === 'f') { femaleCount++; globalGender.f++; }
+             
+             // Age
+             if (profile.dob) {
+                const age = calculateAge(profile.dob);
+                let bucket = "40+";
+                if (age <= 20) bucket = "18-20";
+                else if (age <= 25) bucket = "21-25";
+                else if (age <= 30) bucket = "26-30";
+                else if (age <= 40) bucket = "31-40";
+                
+                ageBuckets[bucket]++;
+                globalAgeBuckets[bucket]++;
+             }
+          }
+
+          return sum + price;
         }, 0);
 
-        // Add to our global totals for the "All Events" view
         totalGlobalRevenue += eventRevenue;
         totalGlobalTickets += eventTickets.length;
+
+        // Calculate highest age bucket and percentages
+        let topAge = "N/A"; let topAgeCount = 0;
+        for (const [b, c] of Object.entries(ageBuckets)) { if ((c as number) > topAgeCount) { topAgeCount = c as number; topAge = b; } }
+        
+        const totalGender = maleCount + femaleCount;
+        const fPct = totalGender > 0 ? Math.round((femaleCount / totalGender) * 100) : 50;
 
         return {
           id: event.id,
           name: event.title,
           type: new Date(event.date) >= new Date() ? "upcoming" : "past",
-          // Note: Chart data is mocked here until we track purchase dates!
-          revenue: [10, 20, 30, 40, 50, 60, 70], 
+          revenue: revenueArray, 
           total: `R ${eventRevenue.toLocaleString()}`,
-          ticketsSold: eventTickets.length
+          ticketsSold: eventTickets.length,
+          gender: { f: fPct, m: 100 - fPct },
+          topAge: topAge,
+          topAgePct: eventTickets.length > 0 ? Math.round((topAgeCount / eventTickets.length) * 100) : 0
         };
       });
 
-      // 5. Create the master "All Events" option
+      // Calculate Global Aggregates for "All Events" Tab
+      let gTopAge = "N/A"; let gTopAgeCount = 0;
+      for (const [b, c] of Object.entries(globalAgeBuckets)) { if ((c as number) > gTopAgeCount) { gTopAgeCount = c as number; gTopAge = b; } }
+      const gTotalGender = globalGender.m + globalGender.f;
+      const gFPct = gTotalGender > 0 ? Math.round((globalGender.f / gTotalGender) * 100) : 50;
+
       const allEventsObj = {
         id: "all",
         name: "All Events",
         type: "business",
-        revenue: [40, 65, 30, 85, 55, 90, 45],
+        revenue: globalRevenueArray,
         total: `R ${totalGlobalRevenue.toLocaleString()}`,
-        ticketsSold: totalGlobalTickets
+        ticketsSold: totalGlobalTickets,
+        gender: { f: gFPct, m: 100 - gFPct },
+        topAge: gTopAge,
+        topAgePct: totalGlobalTickets > 0 ? Math.round((gTopAgeCount / totalGlobalTickets) * 100) : 0
       };
 
-      // 6. Save it all to our React State!
       setEventsDB([allEventsObj, ...formattedEvents]);
     } catch (error) {
       console.log("Error fetching analytics:", error);
@@ -141,50 +194,47 @@ const EventStatsScreen = () => {
   const compareEvent = eventsDB.find((e) => e.id === compareEventId);
 
   // --- UI COMPONENTS ---
-  const BarChart = () => (
-    <View className="h-56 flex-row items-end justify-between px-2 mb-4 mt-4">
-      {LABELS.map((label, index) => {
-        const h1 = selectedEvent?.revenue ? selectedEvent.revenue[index] : 0;
-        const h2 = compareEvent?.revenue ? compareEvent.revenue[index] : 0;
+// 1. UPDATE THE BAR CHART COMPONENT
+  const BarChart = () => {
+    // Find the highest revenue day so we can scale the chart bars proportionately to 100% height
+    const maxRev = Math.max(...(selectedEvent?.revenue || [1]), 1); 
+    const maxCompareRev = compareEvent ? Math.max(...(compareEvent.revenue || [1]), 1) : 1;
 
-        return (
-          <View key={index} className="items-center flex-1 h-full justify-end">
-            <View className="flex-row items-end justify-center gap-1 w-full">
-              <View className="w-3 bg-purple-900/30 rounded-t-full relative h-40">
-                <LinearGradient
-                  colors={["#D087FF", "#6500B0"]}
-                  style={{
-                    position: "absolute",
-                    bottom: 0,
-                    left: 0,
-                    right: 0,
-                    height: `${h1}%`,
-                    borderRadius: 99,
-                  }}
-                />
-              </View>
-              {compareEvent && (
-                <View className="w-3 bg-blue-900/30 rounded-t-full relative h-40">
+    return (
+      <View className="h-56 flex-row items-end justify-between px-2 mb-4 mt-4">
+        {LABELS.map((label, index) => {
+          const raw1 = selectedEvent?.revenue ? selectedEvent.revenue[index] : 0;
+          const raw2 = compareEvent?.revenue ? compareEvent.revenue[index] : 0;
+          
+          // Calculate percentage height based on the max day
+          const h1 = (raw1 / maxRev) * 100;
+          const h2 = (raw2 / maxCompareRev) * 100;
+
+          return (
+            <View key={index} className="items-center flex-1 h-full justify-end">
+              <View className="flex-row items-end justify-center gap-1 w-full">
+                <View className="w-3 bg-purple-900/30 rounded-t-full relative h-40">
                   <LinearGradient
-                    colors={["#60A5FA", "#2563EB"]}
-                    style={{
-                      position: "absolute",
-                      bottom: 0,
-                      left: 0,
-                      right: 0,
-                      height: `${h2}%`,
-                      borderRadius: 99,
-                    }}
+                    colors={["#D087FF", "#6500B0"]}
+                    style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: `${h1}%`, borderRadius: 99 }}
                   />
                 </View>
-              )}
+                {compareEvent && (
+                  <View className="w-3 bg-blue-900/30 rounded-t-full relative h-40">
+                    <LinearGradient
+                      colors={["#60A5FA", "#2563EB"]}
+                      style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: `${h2}%`, borderRadius: 99 }}
+                    />
+                  </View>
+                )}
+              </View>
+              <Text className="text-gray-500 text-xs mt-2">{label}</Text>
             </View>
-            <Text className="text-gray-500 text-xs mt-2">{label}</Text>
-          </View>
-        );
-      })}
-    </View>
-  );
+          );
+        })}
+      </View>
+    );
+  };
 
   const StatCard = ({ label, value, change, icon }: any) => (
     <View className="flex-1 bg-white/5 border border-white/10 p-4 rounded-2xl mr-4 min-w-[150px]">
@@ -340,23 +390,29 @@ const EventStatsScreen = () => {
               <BarChart />
             </View>
 
+{/* AUDIENCE SECTION */}
             <Text className="text-white text-xl font-bold mb-4">Audience</Text>
             <View className="flex-row gap-4 mb-10">
               <View className="flex-1 bg-white/5 border border-white/10 rounded-2xl p-4 items-center">
                 <Text className="text-gray-400 text-sm mb-3 self-start">Gender Split</Text>
-                <View className="flex-row h-4 w-full rounded-full overflow-hidden mb-2">
-                  <View className="bg-purple-500 w-[55%]" />
-                  <View className="bg-blue-500 w-[45%]" />
+                
+                {/* 🚨 Changed || to ?? for the width calculations */}
+                <View className="flex-row h-4 w-full rounded-full overflow-hidden mb-2 bg-gray-800">
+                  <View className="bg-purple-500" style={{ width: `${selectedEvent?.gender?.f ?? 50}%` }} />
+                  <View className="bg-blue-500" style={{ width: `${selectedEvent?.gender?.m ?? 50}%` }} />
                 </View>
+                
+                {/* 🚨 Changed || to ?? for the text displays */}
                 <View className="flex-row justify-between w-full px-1">
-                  <Text className="text-purple-400 text-xs font-bold">55% F</Text>
-                  <Text className="text-blue-400 text-xs font-bold">45% M</Text>
+                  <Text className="text-purple-400 text-xs font-bold">{selectedEvent?.gender?.f ?? 50}% F</Text>
+                  <Text className="text-blue-400 text-xs font-bold">{selectedEvent?.gender?.m ?? 50}% M</Text>
                 </View>
               </View>
+              
               <View className="flex-1 bg-white/5 border border-white/10 rounded-2xl p-4">
                 <Text className="text-gray-400 text-sm mb-1">Top Age</Text>
-                <Text className="text-white text-3xl font-bold">21 - 25</Text>
-                <Text className="text-gray-500 text-xs mt-1">42% of attendees</Text>
+                <Text className="text-white text-3xl font-bold">{selectedEvent?.topAge || "N/A"}</Text>
+                <Text className="text-gray-500 text-xs mt-1">{selectedEvent?.topAgePct || 0}% of attendees</Text>
               </View>
             </View>
 

@@ -179,11 +179,11 @@ const EventProfileScreen = () => {
       const fetchData = async () => {
         try {
           // Fetch Event Data
+// Fetch Event Data
           const { data: event, error: eventError } = await supabase
             .from("events")
-            .select(
-              `*, profiles:host_id ( username, avatar_url ), ticket_tiers (*)`,
-            )
+            // 🚨 Added full_name to the fetch list!
+            .select(`*, profiles:host_id ( username, full_name, avatar_url ), ticket_tiers (*)`)
             .eq("id", eventId)
             .single();
 
@@ -222,7 +222,11 @@ const EventProfileScreen = () => {
   const eventName =
     displayEvent?.title || displayEvent?.eventName || "Loading...";
 
-  const hostName = displayEvent?.profiles?.username;
+  const hostName = 
+    displayEvent?.profiles?.username || 
+    displayEvent?.profiles?.full_name || 
+    "Unknown Host";
+
   const hostAvatar = displayEvent?.profiles?.avatar_url
     ? { uri: displayEvent.profiles.avatar_url }
     : require("../assets/profile-pic-1.png");
