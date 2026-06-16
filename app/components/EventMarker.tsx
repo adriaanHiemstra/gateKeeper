@@ -1,33 +1,42 @@
-import React, { useState, useEffect, memo } from "react";
-import { View, Text, Platform } from "react-native";
+import React, { memo, useState, useEffect } from "react";
+import { View, Text, Image } from "react-native"; // 👈 Import standard Image
 import { Marker } from "react-native-maps";
-import { MapPin } from "lucide-react-native";
 
 const EventMarker = memo(
-  ({ event, color, isSelected, showLabels, onSelect }: any) => {
+  ({ event, icon, isSelected, showLabels, onSelect, coordinate }: any) => {
     const [trackChanges, setTrackChanges] = useState(true);
 
-    // Briefly track view changes to render the icon, then freeze it for performance
     useEffect(() => {
       setTrackChanges(true);
-      const timer = setTimeout(() => setTrackChanges(false), 500);
+      const timer = setTimeout(() => {
+        setTrackChanges(false);
+      }, 400);
+
       return () => clearTimeout(timer);
-    }, [isSelected, showLabels]);
+    }, [isSelected]);
+
+    // Size logic: make it bigger if the user taps it
+    const pinSize = isSelected ? 54 : 42;
 
     return (
       <Marker
-        coordinate={{ latitude: event.lat, longitude: event.lng }}
+        coordinate={coordinate || { latitude: event.lat, longitude: event.lng }}
         onPress={() => onSelect(event)}
         zIndex={isSelected ? 20 : 10}
-        tracksViewChanges={false}
+        tracksViewChanges={trackChanges}
       >
         <View className="items-center justify-center">
-          <MapPin
-            size={isSelected ? 54 : 42}
-            color="white"
-            fill={color || "#FA8900"} // 👈 Uses the calculated color!
-            strokeWidth={1.5}
+          {/* 👇 YOUR NEW HIGH-PERFORMANCE PNG */}
+          <Image
+            source={icon || require("../assets/icons/activity-location.png")}
+            style={{
+              width: pinSize,
+              height: pinSize,
+              resizeMode: "contain",
+            }}
           />
+
+          {/* The Title Label */}
           {showLabels && (
             <View className="mt-0 bg-[#1E1E1E]/90 px-2 py-1 rounded-md border border-white/20 shadow-sm">
               <Text
