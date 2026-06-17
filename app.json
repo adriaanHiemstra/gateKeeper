@@ -42,7 +42,14 @@
         }
       ],
       "expo-font",
-      "expo-video"
+      "expo-video",
+      [
+        "react-native-maps",
+        {
+          "iosGoogleMapsApiKey": "AIzaSyC8OxMEXIbnZoXRf2fwUMtBGLWqqkB7lgQ",
+          "androidGoogleMapsApiKey": "AIzaSyC8OxMEXIbnZoXRf2fwUMtBGLWqqkB7lgQ"
+        }
+      ]
     ]
   }
 }
