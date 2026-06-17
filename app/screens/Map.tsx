@@ -1,4 +1,10 @@
-import React, { useState, useMemo, useCallback } from "react";
+import React, {
+  useState,
+  useMemo,
+  useCallback,
+  useEffect,
+  useRef,
+} from "react";
 import {
   View,
   Text,
@@ -35,7 +41,8 @@ import { supabase } from "../lib/supabase";
 // Types
 import { RootStackParamList } from "../types/types";
 
-// ✅ QUICK FILTERS
+// ─── Constants ───────────────────────────────────────────────────────────────
+
 const QUICK_CATEGORIES = [
   "Music",
   "Sports",
@@ -54,7 +61,8 @@ const TIME_OPTIONS = [
   "Custom",
 ];
 
-// ✅ STRICT SUPER-CATEGORY COLOR ENGINE
+// ─── Category Helpers ─────────────────────────────────────────────────────────
+
 const GET_CATEGORY_COLOR = (
   name: string,
   groupedCategories: Record<string, string[]>,
@@ -62,7 +70,6 @@ const GET_CATEGORY_COLOR = (
   if (!name) return "#FA8900";
 
   let targetGroup = name;
-
   if (!groupedCategories[name]) {
     for (const [group, cats] of Object.entries(groupedCategories)) {
       if (cats.includes(name)) {
@@ -78,11 +85,9 @@ const GET_CATEGORY_COLOR = (
   if (g.includes("active")) return "#F97316";
   if (g.includes("show")) return "#10B981";
   if (g.includes("food") || g.includes("restaurant")) return "#3B82F6";
-
   return "#FA8900";
 };
 
-// 🔥 MAPS SUPER-CATEGORIES TO YOUR NEW PNG ICONS
 const GET_CATEGORY_ICON = (
   name: string,
   groupedCategories: Record<string, string[]>,
@@ -105,19 +110,19 @@ const GET_CATEGORY_ICON = (
   if (g.includes("show")) return require("../assets/icons/shows-location.png");
   if (g.includes("food") || g.includes("restaurant"))
     return require("../assets/icons/food-location.png");
-
-  // Default fallback for everything else
   return require("../assets/icons/activity-location.png");
 };
+
+// ─── Component ────────────────────────────────────────────────────────────────
 
 const MapScreen = () => {
   const navigation =
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
 
+  // ── State ──────────────────────────────────────────────────────────────────
   const [groupedCategories, setGroupedCategories] = useState<
     Record<string, string[]>
   >({});
-
   const [events, setEvents] = useState<any[]>([]);
   const [venues, setVenues] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -126,7 +131,6 @@ const MapScreen = () => {
   const [selectedVenue, setSelectedVenue] = useState<any>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
-
   const [showCategoryModal, setShowCategoryModal] = useState(false);
 
   const [selectedTime, setSelectedTime] = useState("Any Time");
@@ -138,67 +142,76 @@ const MapScreen = () => {
   const [customEndDate, setCustomEndDate] = useState<string | null>(null);
   const [isSearching, setIsSearching] = useState(false);
 
+  // ── Data Fetching ──────────────────────────────────────────────────────────
+
   useFocusEffect(
     useCallback(() => {
-      fetchCategories();
-      fetchMapData();
+      fetchAll();
     }, []),
   );
 
-  const fetchCategories = async () => {
-    try {
-      const { data, error } = await supabase
-        .from("categories")
-        .select("name, group_name")
-        .order("name", { ascending: true });
-
-      if (data) {
-        const grouped = data.reduce((acc: Record<string, string[]>, curr) => {
-          const group = curr.group_name || "Other";
-          if (!acc[group]) acc[group] = [];
-          acc[group].push(curr.name);
-          return acc;
-        }, {});
-        setGroupedCategories(grouped);
-      }
-    } catch (err) {
-      console.error("Error fetching categories:", err);
-    }
-  };
-
-  const fetchMapData = async () => {
+  const fetchAll = async () => {
     try {
       setLoading(true);
       const now = new Date().toISOString();
 
-      const { data: venuesData } = await supabase.from("venues").select("*");
+      // Step 1: Fetch categories first, build grouped map as a LOCAL variable
+      // so it's immediately available for icon/color calculation below —
+      // we can't rely on state here since setGroupedCategories is async.
+      const { data: catData } = await supabase
+        .from("categories")
+        .select("name, group_name")
+        .order("name", { ascending: true });
+
+      const grouped: Record<string, string[]> = {};
+      if (catData) {
+        catData.forEach((curr) => {
+          const group = curr.group_name || "Other";
+          if (!grouped[group]) grouped[group] = [];
+          grouped[group].push(curr.name);
+        });
+        setGroupedCategories(grouped);
+      }
+
+      // Step 2: Fetch venues and events in parallel
+      const [{ data: venuesData }, { data: eventsData }] = await Promise.all([
+        supabase.from("venues").select("*"),
+        supabase
+          .from("events")
+          .select(`*, venues ( id, name, lat, lng )`)
+          .gte("date", now)
+          .eq("is_public", true),
+      ]);
+
       if (venuesData) setVenues(venuesData);
 
-      const { data: eventsData, error } = await supabase
-        .from("events")
-        .select(`*, venues ( id, name, lat, lng )`)
-        .gte("date", now)
-        .eq("is_public", true);
-
+      // Step 3: Format events — use local `grouped`, not `groupedCategories` state
       if (eventsData) {
         const formattedEvents = eventsData.map((event) => {
-          // Jitter offset to prevent exact stacking
+          // Small jitter prevents markers stacking exactly on top of each other
           const jitterLat = (Math.random() - 0.5) * 0.0005;
           const jitterLng = (Math.random() - 0.5) * 0.0005;
 
+          // Prefer direct lat/lng on the event, fall back to the venue join
           const latitude = (event.lat || event.venues?.lat || 0) + jitterLat;
           const longitude = (event.lng || event.venues?.lng || 0) + jitterLng;
 
           let safeCategories: string[] = [];
-          if (Array.isArray(event.categories))
+          if (Array.isArray(event.categories)) {
             safeCategories = event.categories;
-          else if (typeof event.categories === "string") {
+          } else if (typeof event.categories === "string") {
             try {
               safeCategories = JSON.parse(event.categories);
             } catch {
               safeCategories = [event.categories];
             }
-          } else if (event.category) safeCategories = [event.category];
+          } else if (event.category) {
+            safeCategories = [event.category];
+          }
+
+          const primaryCat = safeCategories?.[0] || "Other";
+          const markerColor = GET_CATEGORY_COLOR(primaryCat, grouped);
+          const markerIcon = GET_CATEGORY_ICON(primaryCat, grouped);
 
           return {
             ...event,
@@ -216,8 +229,11 @@ const MapScreen = () => {
             image: event.banner_url
               ? { uri: event.banner_url }
               : require("../assets/imagePlaceHolder1.png"),
+            markerColor,
+            markerIcon,
           };
         });
+
         const validEvents = formattedEvents.filter(
           (e) => e.lat !== 0 && e.lng !== 0,
         );
@@ -230,86 +246,80 @@ const MapScreen = () => {
     }
   };
 
+  // ── Filtering ──────────────────────────────────────────────────────────────
+
   const filteredEvents = useMemo(() => {
-    return events
-      .filter((event) => {
-        const matchesSearch =
-          (event.title || "")
-            .toLowerCase()
-            .includes(searchQuery.toLowerCase()) ||
-          (event.description || "")
-            .toLowerCase()
-            .includes(searchQuery.toLowerCase());
+    return events.filter((event) => {
+      const matchesSearch =
+        (event.title || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (event.description || "")
+          .toLowerCase()
+          .includes(searchQuery.toLowerCase());
 
-        let matchesCategory = true;
-        if (selectedCategory) {
-          const eventCats = Array.isArray(event.categories)
-            ? event.categories
-            : [];
+      let matchesCategory = true;
+      if (selectedCategory) {
+        const eventCats = Array.isArray(event.categories)
+          ? event.categories
+          : [];
 
-          if (groupedCategories[selectedCategory]) {
-            const groupCats = groupedCategories[selectedCategory];
-            matchesCategory = eventCats.some((c: string) =>
-              groupCats.includes(c),
-            );
-          } else {
-            matchesCategory = eventCats.includes(selectedCategory);
-          }
+        if (groupedCategories[selectedCategory]) {
+          const groupCats = groupedCategories[selectedCategory];
+          matchesCategory = eventCats.some((c: string) =>
+            groupCats.includes(c),
+          );
+        } else {
+          matchesCategory = eventCats.includes(selectedCategory);
         }
+      }
 
-        let matchesTime = true;
-        const eventDate = new Date(event.date);
-        const today = new Date();
-        const startOfToday = new Date(
-          today.getFullYear(),
-          today.getMonth(),
-          today.getDate(),
+      let matchesTime = true;
+      const eventDate = new Date(event.date);
+      const today = new Date();
+      const startOfToday = new Date(
+        today.getFullYear(),
+        today.getMonth(),
+        today.getDate(),
+      );
+
+      if (selectedTime === "Today") {
+        const endOfToday = new Date(
+          startOfToday.getTime() + 24 * 60 * 60 * 1000,
         );
+        matchesTime = eventDate >= startOfToday && eventDate < endOfToday;
+      } else if (selectedTime === "Tomorrow") {
+        const startOfTomorrow = new Date(
+          startOfToday.getTime() + 24 * 60 * 60 * 1000,
+        );
+        const endOfTomorrow = new Date(
+          startOfTomorrow.getTime() + 24 * 60 * 60 * 1000,
+        );
+        matchesTime = eventDate >= startOfTomorrow && eventDate < endOfTomorrow;
+      } else if (selectedTime === "This Week") {
+        const endOfWeek = new Date(startOfToday);
+        endOfWeek.setDate(
+          startOfToday.getDate() + (7 - (startOfToday.getDay() || 7)),
+        );
+        endOfWeek.setHours(23, 59, 59, 999);
+        matchesTime = eventDate >= startOfToday && eventDate <= endOfWeek;
+      } else if (selectedTime === "This Month") {
+        const endOf30Days = new Date(
+          startOfToday.getTime() + 30 * 24 * 60 * 60 * 1000,
+        );
+        endOf30Days.setHours(23, 59, 59, 999);
+        matchesTime = eventDate >= startOfToday && eventDate <= endOf30Days;
+      } else if (selectedTime === "Custom" && customStartDate) {
+        const start = new Date(customStartDate);
+        const end = customEndDate
+          ? new Date(customEndDate)
+          : new Date(customStartDate);
+        end.setHours(23, 59, 59, 999);
+        matchesTime = eventDate >= start && eventDate <= end;
+      }
 
-        if (selectedTime === "Today") {
-          const endOfToday = new Date(
-            startOfToday.getTime() + 24 * 60 * 60 * 1000,
-          );
-          matchesTime = eventDate >= startOfToday && eventDate < endOfToday;
-        } else if (selectedTime === "Tomorrow") {
-          const startOfTomorrow = new Date(
-            startOfToday.getTime() + 24 * 60 * 60 * 1000,
-          );
-          const endOfTomorrow = new Date(
-            startOfTomorrow.getTime() + 24 * 60 * 60 * 1000,
-          );
-          matchesTime =
-            eventDate >= startOfTomorrow && eventDate < endOfTomorrow;
-        } else if (selectedTime === "This Week") {
-          const endOfWeek = new Date(startOfToday);
-          endOfWeek.setDate(
-            startOfToday.getDate() + (7 - (startOfToday.getDay() || 7)),
-          );
-          endOfWeek.setHours(23, 59, 59, 999);
-          matchesTime = eventDate >= startOfToday && eventDate <= endOfWeek;
-        } else if (selectedTime === "This Month") {
-          const endOf30Days = new Date(
-            startOfToday.getTime() + 30 * 24 * 60 * 60 * 1000,
-          );
-          endOf30Days.setHours(23, 59, 59, 999);
-          matchesTime = eventDate >= startOfToday && eventDate <= endOf30Days;
-        } else if (selectedTime === "Custom" && customStartDate) {
-          const start = new Date(customStartDate);
-          const end = customEndDate
-            ? new Date(customEndDate)
-            : new Date(customStartDate);
-          end.setHours(23, 59, 59, 999);
-          matchesTime = eventDate >= start && eventDate <= end;
-        }
-
-        return matchesSearch && matchesCategory && matchesTime;
-      })
-      .map((event) => {
-        const primaryCat = event.categories?.[0] || "Other";
-        const markerColor = GET_CATEGORY_COLOR(primaryCat, groupedCategories);
-        const markerIcon = GET_CATEGORY_ICON(primaryCat, groupedCategories); // 👈 ADD THIS
-        return { ...event, markerColor, markerIcon }; // 👈 PASS IT ALONG
-      });
+      return matchesSearch && matchesCategory && matchesTime;
+    });
+    // Note: .slice(0, 150) removed — react-native-clusterer handles large
+    // datasets natively so we no longer need to artificially cap the list.
   }, [
     searchQuery,
     selectedCategory,
@@ -320,12 +330,24 @@ const MapScreen = () => {
     groupedCategories,
   ]);
 
+  // Clear selectedEvent if the active filter hides it
+  useEffect(() => {
+    if (selectedEvent) {
+      const stillVisible = filteredEvents.some(
+        (e: any) => e.id === selectedEvent.id,
+      );
+      if (!stillVisible) setSelectedEvent(null);
+    }
+  }, [filteredEvents, selectedEvent]);
+
   const filteredVenues = useMemo(() => {
     if (!searchQuery) return venues;
     return venues.filter((venue) =>
       (venue.name || "").toLowerCase().includes(searchQuery.toLowerCase()),
     );
   }, [searchQuery, venues]);
+
+  // ── Handlers ───────────────────────────────────────────────────────────────
 
   const handleSelectResult = (item: any) => {
     setSearchQuery(item.title || item.name);
@@ -352,7 +374,6 @@ const MapScreen = () => {
     }
   };
 
-  // ✅ PROPERLY PLACED MEMOIZED CALLBACKS (Top level of the component!)
   const handleSelectEvent = useCallback((ev: any) => {
     setSelectedVenue(null);
     setSelectedEvent(ev);
@@ -367,6 +388,8 @@ const MapScreen = () => {
 
   const todayDateString = new Date().toISOString().split("T")[0];
 
+  // ── Render ─────────────────────────────────────────────────────────────────
+
   return (
     <View className="flex-1 bg-black">
       {loading && (
@@ -375,6 +398,9 @@ const MapScreen = () => {
         </View>
       )}
 
+      {/* EventMap now receives filteredEvents directly —
+          react-native-clusterer handles clustering natively,
+          no debounce or slice needed */}
       <EventMap
         events={filteredEvents}
         venues={filteredVenues}
@@ -388,6 +414,7 @@ const MapScreen = () => {
         edges={["top"]}
       >
         <View className="px-4 pt-2">
+          {/* Search + Time filter row */}
           <View className="flex-row gap-3 mb-3">
             <View className="flex-1 flex-row items-center bg-[#1E1E1E]/95 border border-white/10 rounded-2xl px-4 h-12 shadow-lg">
               <Search color="#FA8900" size={20} className="mr-3" />
@@ -439,6 +466,7 @@ const MapScreen = () => {
             </TouchableOpacity>
           </View>
 
+          {/* Active custom date badge */}
           {selectedTime === "Custom" && customStartDate && !isSearching && (
             <View className="flex-row items-center bg-orange-500/20 border border-orange-500/50 rounded-full self-start px-3 py-1.5 mb-3 ml-1">
               <CalendarIcon color="#FA8900" size={14} className="mr-2" />
@@ -457,6 +485,7 @@ const MapScreen = () => {
             </View>
           )}
 
+          {/* Search results dropdown */}
           {isSearching && (
             <View className="absolute top-[60px] left-4 right-16 bg-[#1E1E1E] rounded-2xl border border-white/10 shadow-2xl overflow-hidden z-50">
               {filteredEvents.slice(0, 3).map((item) => (
@@ -493,6 +522,7 @@ const MapScreen = () => {
             </View>
           )}
 
+          {/* Time dropdown */}
           {showTimeDropdown && (
             <View className="absolute top-16 right-4 bg-[#1E1E1E] border border-white/10 rounded-2xl p-2 shadow-xl w-40 z-50">
               {TIME_OPTIONS.map((time) => (
@@ -514,6 +544,7 @@ const MapScreen = () => {
             </View>
           )}
 
+          {/* Category filter pills */}
           {!isSearching && (
             <ScrollView
               horizontal
@@ -552,7 +583,7 @@ const MapScreen = () => {
                     }}
                     style={{
                       backgroundColor: isSelected ? color : "#1E1E1E95",
-                      borderColor: isSelected ? color : "rgba(255,255,255,0.2)",
+                      borderColor: isSelected ? color : "rgba(255,255,255,0.5)",
                       borderWidth: 1,
                     }}
                     className="mr-2 px-4 py-2 rounded-full"
@@ -581,6 +612,8 @@ const MapScreen = () => {
           )}
         </View>
       </SafeAreaView>
+
+      {/* ── Modals ─────────────────────────────────────────────────────────── */}
 
       <Modal visible={showCategoryModal} transparent animationType="slide">
         <View className="flex-1 justify-end bg-black/70">
@@ -614,7 +647,6 @@ const MapScreen = () => {
                     <Text className="text-gray-400 font-bold mb-3 uppercase tracking-wider text-xs">
                       {superCategory}
                     </Text>
-
                     <View className="flex-row flex-wrap gap-2">
                       {subCategories.map((cat) => {
                         const isSelected = selectedCategory === cat;
@@ -622,7 +654,6 @@ const MapScreen = () => {
                           cat,
                           groupedCategories,
                         );
-
                         return (
                           <TouchableOpacity
                             key={cat}
@@ -716,6 +747,8 @@ const MapScreen = () => {
           </View>
         </View>
       </Modal>
+
+      {/* ── Bottom cards ───────────────────────────────────────────────────── */}
 
       {selectedEvent && !isSearching && (
         <MapCard

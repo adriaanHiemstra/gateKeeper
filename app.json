@@ -14,14 +14,22 @@
     "assetBundlePatterns": ["**/*"],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.yourname.myeventapp"
+      "bundleIdentifier": "com.yourname.myeventapp",
+      "config": {
+        "googleMapsApiKey": "AIzaSyC8OxMEXIbnZoXRf2fwUMtBGLWqqkB7lgQ"
+      }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./app/assets/adaptive-icon.png",
         "backgroundColor": "#121212"
       },
-      "package": "com.yourname.myeventapp"
+      "package": "com.yourname.myeventapp",
+      "config": {
+        "googleMaps": {
+          "apiKey": "AIzaSyC8OxMEXIbnZoXRf2fwUMtBGLWqqkB7lgQ"
+        }
+      }
     },
     "web": {
       "favicon": "./assets/favicon.png"
