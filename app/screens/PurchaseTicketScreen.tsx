@@ -334,7 +334,7 @@ const handleCheckout = async () => {
                   >
                     <Minus color="white" size={16} />
                   </TouchableOpacity>
-                  <Text className="text-white font-bold text-lg mx-4 w-4 text-center">
+                  <Text className="text-white font-bold text-lg mx-2 w-8 text-center">
                     {t.quantity}
                   </Text>
                   <TouchableOpacity
