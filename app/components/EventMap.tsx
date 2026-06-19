@@ -1,4 +1,4 @@
-import React, { useRef, useState } from "react";
+import React, { useRef, useState, useMemo } from "react";
 import { View, Text, Dimensions } from "react-native";
 import MapView, { PROVIDER_GOOGLE, Region, Marker } from "react-native-maps";
 import { useClusterer } from "react-native-clusterer";
@@ -8,6 +8,9 @@ import EventMarker from "./EventMarker";
 import VenueMarker from "./VenueMarker";
 
 const { width, height } = Dimensions.get("window");
+
+// We pull the map dimensions outside the component so it stays exactly the same in memory
+const mapDimensions = { width, height };
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -58,23 +61,21 @@ const EventMap = ({
   });
   const [showLabels, setShowLabels] = useState(false);
 
-  // Convert events to GeoJSON points for the clusterer
-  const points = events.map((event: EventType) => ({
-    type: "Feature" as const,
-    geometry: {
-      type: "Point" as const,
-      coordinates: [event.lng, event.lat],
-    },
-    properties: { event },
-  }));
+  // We wrap the points calculation in useMemo so the app 'memorizes' the array
+  // It will only run this heavy calculation if the 'events' list actually changes!
+  const points = useMemo(() => {
+    return events.map((event: EventType) => ({
+      type: "Feature" as const,
+      geometry: {
+        type: "Point" as const,
+        coordinates: [event.lng, event.lat],
+      },
+      properties: { event },
+    }));
+  }, [events]);
 
-  // useClusterer runs the supercluster algorithm natively —
-  // handles hundreds of markers without touching the JS bridge
-  const [clusters, supercluster] = useClusterer(
-    points,
-    { width, height },
-    region,
-  );
+  // useClusterer runs the supercluster algorithm natively
+  const [clusters, supercluster] = useClusterer(points, mapDimensions, region);
 
   const handleRegionChange = (newRegion: Region) => {
     setRegion(newRegion);
@@ -108,10 +109,10 @@ const EventMap = ({
                     {
                       latitude: lat,
                       longitude: lng,
-                      latitudeDelta: region.latitudeDelta / 2,
-                      longitudeDelta: region.longitudeDelta / 2,
+                      latitudeDelta: region.latitudeDelta / 5,
+                      longitudeDelta: region.longitudeDelta / 5,
                     },
-                    300,
+                    600,
                   );
                 }}
                 tracksViewChanges={false}
