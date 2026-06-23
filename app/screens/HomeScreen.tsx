@@ -61,9 +61,10 @@ const HomeScreen = () => {
     }, []),
   );
 
-  const fetchFeed = async () => {
+const fetchFeed = async () => {
     try {
       const today = new Date().toISOString();
+      const todayNow = new Date(); // Added to track current time for live filtering
 
       // 1. Fetch Events
       const { data: eventsData } = await supabase
@@ -85,7 +86,13 @@ const HomeScreen = () => {
         .select(
           `
             *,
-            events ( title, id )
+            events ( 
+              title, 
+              id, 
+              date, 
+              end_date,
+              profiles:host_id ( username, avatar_url ) 
+            )
         `,
         )
         .order("created_at", { ascending: false })
@@ -98,11 +105,25 @@ const HomeScreen = () => {
         sortTime: new Date(e.created_at).getTime(),
       }));
 
-      const formattedUpdates = (updatesData || []).map((u) => ({
-        ...u,
-        type: "post",
-        sortTime: new Date(u.created_at).getTime(),
-      }));
+      // 🚨 FIX: Filter out updates belonging to expired events using the PostContentScreen rules
+      const formattedUpdates = (updatesData || [])
+        .filter((u) => {
+          // If the event was completely deleted from DB, don't show the post
+          if (!u.events) return false;
+
+          // Replicate exact end-time calculation formula from PostContentScreen
+          const endDate = u.events.end_date
+            ? new Date(u.events.end_date)
+            : new Date(new Date(u.events.date).getTime() + 24 * 60 * 60 * 1000);
+
+          // Return true only if the event hasn't ended yet
+          return todayNow <= endDate;
+        })
+        .map((u) => ({
+          ...u,
+          type: "post",
+          sortTime: new Date(u.created_at).getTime(),
+        }));
 
       // 4. Combine and Sort
       const combined = [...formattedEvents, ...formattedUpdates].sort(
@@ -231,14 +252,21 @@ const HomeScreen = () => {
                 return (
                   <PostFeedCard
                     id={item.id}
-                    eventId={item.event_id} // ✅ FIX: Added the missing prop here!
+                    eventId={item.event_id}
                     caption={item.caption}
-                    image={item.image_url}
+                    image={item.image_url} 
                     eventTitle={item.events?.title || "Unknown Event"}
-                    hostName={"Event Update"}
-                    hostAvatar={null}
+                    // 🚨 FIX: Replaces "Event Update" with the actual Host's Username
+                    hostName={item.events?.profiles?.username || "Unknown Host"}
+                    // 🚨 FIX: Passes the actual Host's profile picture
+                    hostAvatar={
+                      item.events?.profiles?.avatar_url
+                        ? { uri: item.events.profiles.avatar_url }
+                        : require("../assets/profile-pic-1.png")
+                    }
                     timestamp={new Date(item.created_at).toLocaleDateString()}
-                    attendeesCount={12}
+                    // 🚨 FIX: Set to 0 to remove the fake "+12 people" text
+                    attendeesCount={0} 
                     onOpenSocial={() =>
                       openPanel([], item.events?.title || "Event")
                     }
@@ -253,7 +281,7 @@ const HomeScreen = () => {
                 );
               }
 
-              // --- B. RENDER EVENT CARD ---
+              // --- B. RENDER REGULAR EVENT CARD ---
               const tiers = item.ticket_tiers || [];
               const minPrice =
                 tiers.length > 0
@@ -261,32 +289,35 @@ const HomeScreen = () => {
                   : null;
 
               return (
-                <EventFeedCard
-                  id={item.id}
-                  title={item.title}
-                  hostName={item.profiles?.username || "Unknown Host"}
-                  mediaItems={item.images || []}
-                  minPrice={minPrice ? minPrice.toString() : undefined}
-                  tags={item.tags || []}
-                  hostAvatar={
-                    item.profiles?.avatar_url
-                      ? { uri: item.profiles.avatar_url }
-                      : require("../assets/profile-pic-1.png")
-                  }
-                  image={
-                    item.banner_url
-                      ? { uri: item.banner_url }
-                      : require("../assets/event-placeholder.png")
-                  }
-                  attendeesCount={12}
-                  onOpenSocial={() => openPanel([], item.title)}
-                  onPressHost={() =>
-                    navigation.navigate("EventHostProfile", {
-                      hostId: item.host_id,
-                    })
-                  }
-                  onViewEvent={() => goToEventProfile(item, false)}
-                />
+                <View className="mb-6">
+                  <EventFeedCard
+                    id={item.id}
+                    title={item.title}
+                    hostName={item.profiles?.username || "Unknown Host"}
+                    mediaItems={item.images || []}
+                    minPrice={minPrice ? minPrice.toString() : undefined}
+                    tags={item.categories || []}
+                    hostAvatar={
+                      item.profiles?.avatar_url
+                        ? { uri: item.profiles.avatar_url }
+                        : require("../assets/profile-pic-1.png")
+                    }
+                    image={
+                      item.banner_url
+                        ? { uri: item.banner_url }
+                        : require("../assets/event-placeholder.png")
+                    }
+                    // 🚨 FIX: Set to 0 to remove the fake "+12 people" text here too
+                    attendeesCount={0} 
+                    onOpenSocial={() => openPanel([], item.title)}
+                    onPressHost={() =>
+                      navigation.navigate("EventHostProfile", {
+                        hostId: item.host_id,
+                      })
+                    }
+                    onViewEvent={() => goToEventProfile(item, false)}
+                  />
+                </View>
               );
             }}
             ListEmptyComponent={
