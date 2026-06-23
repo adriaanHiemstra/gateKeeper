@@ -64,7 +64,7 @@ const HomeScreen = () => {
 const fetchFeed = async () => {
     try {
       const today = new Date().toISOString();
-      const todayNow = new Date(); // Added to track current time for live filtering
+      const todayNow = new Date();
 
       // 1. Fetch Events
       const { data: eventsData } = await supabase
@@ -81,6 +81,7 @@ const fetchFeed = async () => {
         .limit(20);
 
       // 2. Fetch Updates
+      // 🚨 FIX: Added profiles nested query to fetch the creator's avatar and username
       const { data: updatesData } = await supabase
         .from("event_updates")
         .select(
@@ -91,7 +92,7 @@ const fetchFeed = async () => {
               id, 
               date, 
               end_date,
-              profiles:host_id ( username, avatar_url ) 
+              profiles:host_id ( username, avatar_url )
             )
         `,
         )
@@ -105,18 +106,12 @@ const fetchFeed = async () => {
         sortTime: new Date(e.created_at).getTime(),
       }));
 
-      // 🚨 FIX: Filter out updates belonging to expired events using the PostContentScreen rules
       const formattedUpdates = (updatesData || [])
         .filter((u) => {
-          // If the event was completely deleted from DB, don't show the post
           if (!u.events) return false;
-
-          // Replicate exact end-time calculation formula from PostContentScreen
           const endDate = u.events.end_date
             ? new Date(u.events.end_date)
             : new Date(new Date(u.events.date).getTime() + 24 * 60 * 60 * 1000);
-
-          // Return true only if the event hasn't ended yet
           return todayNow <= endDate;
         })
         .map((u) => ({
@@ -249,32 +244,32 @@ const fetchFeed = async () => {
             renderItem={({ item }) => {
               // --- A. RENDER POST CARD ---
               if (item.type === "post") {
+                // Safely extract the nested event and profile data
+                const eventObj = Array.isArray(item.events) ? item.events[0] : item.events;
+                const hostProfile = Array.isArray(eventObj?.profiles) ? eventObj.profiles[0] : eventObj?.profiles;
+
                 return (
                   <PostFeedCard
                     id={item.id}
                     eventId={item.event_id}
                     caption={item.caption}
-                    image={item.image_url} 
-                    eventTitle={item.events?.title || "Unknown Event"}
-                    // 🚨 FIX: Replaces "Event Update" with the actual Host's Username
-                    hostName={item.events?.profiles?.username || "Unknown Host"}
-                    // 🚨 FIX: Passes the actual Host's profile picture
-                    hostAvatar={
-                      item.events?.profiles?.avatar_url
-                        ? { uri: item.events.profiles.avatar_url }
-                        : require("../assets/profile-pic-1.png")
-                    }
+                    image={item.image_url}
+                    eventTitle={eventObj?.title || "Unknown Event"}
+                    hostName={hostProfile?.username || "Unknown Host"}
+                    
+                    // 🚨 FIX: Pass the raw string URL (or null) instead of the { uri: ... } object!
+                    hostAvatar={hostProfile?.avatar_url || null}
+                    
                     timestamp={new Date(item.created_at).toLocaleDateString()}
-                    // 🚨 FIX: Set to 0 to remove the fake "+12 people" text
-                    attendeesCount={0} 
+                    attendeesCount={0}
                     onOpenSocial={() =>
-                      openPanel([], item.events?.title || "Event")
+                      openPanel([], eventObj?.title || "Event")
                     }
                     onViewEvent={() => goToEventProfile(item, true)}
                     onOpenDiscussion={() =>
                       navigation.navigate("EventCommunity", {
                         eventId: item.event_id,
-                        eventTitle: item.events?.title || "Event",
+                        eventTitle: eventObj?.title || "Event",
                       })
                     }
                   />
@@ -288,6 +283,11 @@ const fetchFeed = async () => {
                   ? Math.min(...tiers.map((t: any) => parseFloat(t.price) || 0))
                   : null;
 
+              // (Keep your EventFeedCard object logic exactly the same since it works!)
+              const eventAvatar = item.profiles?.avatar_url && item.profiles.avatar_url.trim() !== ""
+                ? { uri: item.profiles.avatar_url }
+                : require("../assets/profile-pic-1.png");
+
               return (
                 <View className="mb-6">
                   <EventFeedCard
@@ -297,18 +297,13 @@ const fetchFeed = async () => {
                     mediaItems={item.images || []}
                     minPrice={minPrice ? minPrice.toString() : undefined}
                     tags={item.categories || []}
-                    hostAvatar={
-                      item.profiles?.avatar_url
-                        ? { uri: item.profiles.avatar_url }
-                        : require("../assets/profile-pic-1.png")
-                    }
+                    hostAvatar={eventAvatar}
                     image={
                       item.banner_url
                         ? { uri: item.banner_url }
                         : require("../assets/event-placeholder.png")
                     }
-                    // 🚨 FIX: Set to 0 to remove the fake "+12 people" text here too
-                    attendeesCount={0} 
+                    attendeesCount={0}
                     onOpenSocial={() => openPanel([], item.title)}
                     onPressHost={() =>
                       navigation.navigate("EventHostProfile", {
@@ -388,28 +383,30 @@ const fetchFeed = async () => {
                     None of your crew has jumped on this yet.
                   </Text>
                 }
-                renderItem={({ item }) => (
-                  <TouchableOpacity className="flex-row items-center mb-6">
-                    <Image
-                      source={
-                        item.avatar_url
-                          ? { uri: item.avatar_url }
-                          : require("../assets/profile-pic-1.png")
-                      }
-                      className="w-14 h-14 rounded-full border-2 border-orange-500 mr-4"
-                    />
-                    <View className="flex-1">
-                      <Text className="text-white text-lg font-bold">
-                        {item.username}
-                      </Text>
-                      {/* Show if they are officially going, or just interested! */}
-                      <Text className="text-gray-400 text-sm">
-                        {item.intent === "GOING" ? "Going 🚀" : "Interested"}
-                      </Text>
-                    </View>
-                    <ChevronRight color="#666" size={20} />
-                  </TouchableOpacity>
-                )}
+                renderItem={({ item }) => {
+                  // 🚨 FIX: Protect friend panel images against empty string urls
+                  const friendAvatar = item.avatar_url && item.avatar_url.trim() !== ""
+                    ? { uri: item.avatar_url }
+                    : require("../assets/profile-pic-1.png");
+
+                  return (
+                    <TouchableOpacity className="flex-row items-center mb-6">
+                      <Image
+                        source={friendAvatar}
+                        className="w-14 h-14 rounded-full border-2 border-orange-500 mr-4"
+                      />
+                      <View className="flex-1">
+                        <Text className="text-white text-lg font-bold">
+                          {item.username}
+                        </Text>
+                        <Text className="text-gray-400 text-sm">
+                          {item.intent === "GOING" ? "Going 🚀" : "Interested"}
+                        </Text>
+                      </View>
+                      <ChevronRight color="#666" size={20} />
+                    </TouchableOpacity>
+                  );
+                }}
               />
             </SafeAreaView>
           </Animated.View>
