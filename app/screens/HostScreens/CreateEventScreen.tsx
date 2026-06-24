@@ -231,17 +231,44 @@ const CreateEventScreen = () => {
 
   const todayDateString = new Date().toISOString().split("T")[0];
 
+  const getTimeInMinutes = (time: string) => {
+    const [h, m] = time.split(":").map(Number);
+    return h * 60 + m;
+  };
+
   const availableTimes = useMemo(() => {
+    const now = new Date();
+    const currentMinutes = now.getHours() * 60 + now.getMinutes();
+    let minimumMinutes = 0;
+
     if (activeTimeModal === "start" && startDate === todayDateString) {
-      const now = new Date();
-      const currentMinutes = now.getHours() * 60 + now.getMinutes();
-      return ALL_TIMES.filter((t) => {
-        const [h, m] = t.split(":").map(Number);
-        return h * 60 + m > currentMinutes;
-      });
+      minimumMinutes = currentMinutes;
+    } else if (
+      activeTimeModal === "end" &&
+      (endDate || startDate) === todayDateString
+    ) {
+      minimumMinutes = currentMinutes;
     }
-    return ALL_TIMES;
-  }, [activeTimeModal, startDate]);
+
+    const minimumStartTimeMinutes =
+      activeTimeModal === "end" &&
+      startTime &&
+      (!endDate || endDate === startDate)
+        ? getTimeInMinutes(startTime)
+        : null;
+
+    return ALL_TIMES.filter((t) => {
+      const minutes = getTimeInMinutes(t);
+      if (minutes <= minimumMinutes) return false;
+      if (
+        minimumStartTimeMinutes !== null &&
+        minutes <= minimumStartTimeMinutes
+      ) {
+        return false;
+      }
+      return true;
+    });
+  }, [activeTimeModal, startDate, endDate, startTime, todayDateString]);
 
   // --- HANDLERS ---
 
