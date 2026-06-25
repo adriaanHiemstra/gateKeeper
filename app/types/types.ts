@@ -7,6 +7,7 @@ export type RootStackParamList = {
   // Profile: undefined; ❌ REMOVED
 
   // Auth screens
+  Welcome: undefined;
   Login: undefined;
   SignUp: undefined;
   Onboarding: undefined;

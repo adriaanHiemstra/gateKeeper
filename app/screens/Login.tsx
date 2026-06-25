@@ -143,7 +143,7 @@ const Login = () => {
                   onChangeText={setEmail}
                   autoCapitalize="none"
                   keyboardType="email-address"
-                  className="flex-1 text-white text-lg font-medium h-full"
+                  className="flex-1 text-white text-lg font-medium h-full ml-1"
                   style={{ fontFamily: "Jost-Medium" }}
                 />
               </View>
@@ -162,7 +162,7 @@ const Login = () => {
                   value={password}
                   onChangeText={setPassword}
                   secureTextEntry={!showPassword}
-                  className="flex-1 text-white text-lg font-medium h-full"
+                  className="flex-1 text-white text-lg font-medium h-full ml-1"
                   style={{ fontFamily: "Jost-Medium" }}
                 />
                 <TouchableOpacity

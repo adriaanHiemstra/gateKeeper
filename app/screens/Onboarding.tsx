@@ -54,6 +54,10 @@ const AVATAR_COLORS = [
   "#00E5FF",
 ];
 
+// The app is launching in these cities only, so the user picks one rather than
+// typing a free-text location. Saved to profiles.location on finish.
+const LAUNCH_CITIES = ["Cape Town", "Stellenbosch"];
+
 // --- HELPERS ---
 const validateSAPhoneNumber = (phone: string) => {
   const cleaned = phone.replace(/[^\d+]/g, "");
@@ -532,25 +536,41 @@ const Onboarding = () => {
                   </View>
                 </View>
 
-                {/* LOCATION INPUT */}
+                {/* CITY SELECT — launch cities only */}
                 <View className="mb-10">
                   <Text className="text-gray-400 text-xs font-bold uppercase mb-2 ml-1">
-                    City
+                    Your City
                   </Text>
-                  <View className="flex-row items-center bg-white/10 border border-white/20 rounded-2xl px-4 h-14">
-                    <MapPin
-                      color="white"
-                      size={20}
-                      className="mr-3 opacity-70"
-                    />
-                    <TextInput
-                      placeholder="Cape Town, ZA"
-                      placeholderTextColor="#666"
-                      value={location}
-                      onChangeText={setLocation}
-                      className="flex-1 text-white text-lg font-medium h-full ml-2"
-                      style={{ fontFamily: "Jost-Medium" }}
-                    />
+                  <View className="flex-row gap-3">
+                    {LAUNCH_CITIES.map((city) => {
+                      const isSelected = location === city;
+                      return (
+                        <TouchableOpacity
+                          key={city}
+                          onPress={() => setLocation(city)}
+                          activeOpacity={0.85}
+                          className={`flex-1 flex-row items-center justify-center h-14 rounded-2xl border ${
+                            isSelected
+                              ? "bg-orange-500/20 border-orange-500"
+                              : "bg-white/10 border-white/20"
+                          }`}
+                        >
+                          <MapPin
+                            color={isSelected ? "#FA8900" : "white"}
+                            size={18}
+                            className="mr-2"
+                          />
+                          <Text
+                            className={`text-base font-bold ${
+                              isSelected ? "text-orange-400" : "text-white"
+                            }`}
+                            style={{ fontFamily: "Jost-Medium" }}
+                          >
+                            {city}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
                   </View>
                 </View>
               </View>

@@ -8,6 +8,7 @@ import Search from "../screens/Search";
 // import Profile from "../screens/Profile"; // ❌ REMOVED
 
 // Auth
+import Welcome from "../screens/Welcome";
 import SignUp from "../screens/SignUp";
 import Login from "../screens/Login";
 import Onboarding from "../screens/Onboarding";
@@ -155,6 +156,7 @@ export default function AppNavigator({
       <Stack.Screen name="DeleteAccount" component={DeleteAccountScreen} />
 
       {/* Auth */}
+      <Stack.Screen name="Welcome" component={Welcome} />
       <Stack.Screen name="Login" component={Login} />
       <Stack.Screen name="SignUp" component={SignUp} />
       <Stack.Screen name="Onboarding" component={Onboarding} />

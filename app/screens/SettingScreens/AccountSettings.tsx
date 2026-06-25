@@ -83,7 +83,7 @@ const AccountSettings = () => {
           // Actually end the Supabase session, then wipe the back stack so the
           // user can't navigate back into the authenticated app.
           await signOut();
-          navigation.reset({ index: 0, routes: [{ name: "SignUp" }] });
+          navigation.reset({ index: 0, routes: [{ name: "Welcome" }] });
         },
       },
     ]);

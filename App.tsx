@@ -35,7 +35,7 @@ function RootGate() {
   if (isLoading) return <Splash />;
 
   const initialRouteName = !session
-    ? "SignUp"
+    ? "Welcome"
     : onboarded
       ? "Home"
       : "Onboarding";
