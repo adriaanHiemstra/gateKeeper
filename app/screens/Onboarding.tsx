@@ -18,6 +18,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import {
   ArrowRight,
+  ArrowLeft,
   MapPin,
   User,
   Check,
@@ -25,7 +26,9 @@ import {
   Users,
   CheckCircle2,
   Circle,
-  Camera, // <-- NEW IMPORT
+  Camera,
+  Search,
+  X,
 } from "lucide-react-native";
 import { useNavigation } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
@@ -154,6 +157,7 @@ const Onboarding = () => {
   // Screen 2: Vibe Check State
   const [dbCategories, setDbCategories] = useState<Category[]>([]);
   const [selectedTags, setSelectedTags] = useState<Category[]>([]);
+  const [categorySearch, setCategorySearch] = useState("");
 
   // Screen 3 & 4: Contacts State
   const [phoneNumber, setPhoneNumber] = useState("");
@@ -228,6 +232,16 @@ const Onboarding = () => {
     if (step === 1) setStep(2);
     else if (step === 2) setStep(3);
   };
+
+  // Step the user back through onboarding (step 4 → 3 → 2 → 1).
+  const handleBack = () => {
+    if (step > 1) setStep(step - 1);
+  };
+
+  // Categories filtered by the search box on the "What's your scene?" step.
+  const visibleCategories = dbCategories.filter((cat) =>
+    cat.name.toLowerCase().includes(categorySearch.toLowerCase()),
+  );
 
   const handleSyncContacts = async (skipSync: boolean = false) => {
     if (skipSync) {
@@ -421,6 +435,16 @@ const Onboarding = () => {
             contentContainerStyle={{ flexGrow: 1, padding: 24 }}
             showsVerticalScrollIndicator={false}
           >
+            {/* Back arrow — lets the user step back through onboarding */}
+            {step > 1 && (
+              <TouchableOpacity
+                onPress={handleBack}
+                className="w-12 h-12 bg-white/10 rounded-full items-center justify-center mb-4"
+              >
+                <ArrowLeft color="white" size={24} />
+              </TouchableOpacity>
+            )}
+
             {step < 4 && (
               <View className="flex-row gap-2 mb-8 mt-4 justify-center">
                 <View className="h-2 flex-1 rounded-full bg-orange-500" />
@@ -543,12 +567,38 @@ const Onboarding = () => {
                 >
                   What's your scene?
                 </Text>
-                <Text className="text-gray-400 text-lg mb-8">
+                <Text className="text-gray-400 text-lg mb-6">
                   Pick up to 10 things you're into. We'll curate your feed.
                 </Text>
 
+                {/* SEARCH BAR — filter the categories below */}
+                <View className="flex-row items-center bg-white/10 border border-white/20 rounded-2xl px-4 h-14 mb-6">
+                  <Search color="white" size={20} className="mr-3 opacity-70" />
+                  <TextInput
+                    placeholder="Search interests..."
+                    placeholderTextColor="#666"
+                    value={categorySearch}
+                    onChangeText={setCategorySearch}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    className="flex-1 text-white text-lg font-medium h-full ml-1"
+                    style={{
+                      fontFamily: "Jost-Medium",
+                      textAlignVertical: "center",
+                    }}
+                  />
+                  {categorySearch.length > 0 && (
+                    <TouchableOpacity
+                      onPress={() => setCategorySearch("")}
+                      className="bg-white/10 p-1.5 rounded-full"
+                    >
+                      <X color="white" size={14} />
+                    </TouchableOpacity>
+                  )}
+                </View>
+
                 <View className="flex-row flex-wrap justify-start">
-                  {dbCategories.map((cat) => (
+                  {visibleCategories.map((cat) => (
                     <AnimatedTag
                       key={cat.id}
                       label={cat.name}
@@ -556,6 +606,11 @@ const Onboarding = () => {
                       onPress={() => toggleTag(cat)}
                     />
                   ))}
+                  {visibleCategories.length === 0 && (
+                    <Text className="text-gray-500 italic mt-2">
+                      No interests match "{categorySearch}".
+                    </Text>
+                  )}
                 </View>
               </View>
             )}
