@@ -26,6 +26,7 @@ import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 
 import { supabase } from "../lib/supabase";
 import { rankEvents } from "../lib/feedAlgorithm";
+import { trackEventInteraction } from "../lib/interactions";
 import { RootStackParamList } from "../types/types";
 
 // How many items we pull per refresh. FlatList virtualizes rendering, so a
@@ -145,11 +146,36 @@ const HomeScreen = () => {
         (seen || []).forEach((r: any) => r.event_id && seenEventIds.add(r.event_id));
       }
 
+      // 5. The user's learned taste: the categories of events they've already
+      // saved / RSVP'd. This is what makes "liking" an event improve the feed.
+      const savedCategoryWeights: Record<string, number> = {};
+      const savedEventIds = new Set<string>();
+      if (user) {
+        const { data: mine } = await supabase
+          .from("event_interactions")
+          .select("event_id, intent, events ( categories )")
+          .eq("user_id", user.id)
+          .in("intent", ["SAVED", "GOING"]);
+        (mine || []).forEach((row: any) => {
+          if (row.event_id) savedEventIds.add(row.event_id);
+          const ev = Array.isArray(row.events) ? row.events[0] : row.events;
+          const cats: string[] = ev?.categories || [];
+          // Actually committing ("GOING") is a stronger taste signal than saving.
+          const weight = row.intent === "GOING" ? 2 : 1;
+          cats.forEach((c) => {
+            const key = String(c).toLowerCase();
+            savedCategoryWeights[key] = (savedCategoryWeights[key] || 0) + weight;
+          });
+        });
+      }
+
       // --- Rank the events by relevance to this user ---
       const rankedEvents = rankEvents(events, {
         interests,
+        savedCategoryWeights,
         friendIntentByEvent,
         seenEventIds,
+        savedEventIds,
       }).map((e) => ({ ...e, type: "event" }));
 
       // --- Keep only updates whose event hasn't ended yet ---
@@ -190,6 +216,10 @@ const HomeScreen = () => {
 
   // --- NAVIGATION HELPER ---
   const goToEventProfile = (data: any, isPartial: boolean = false) => {
+    // Log the open so the algorithm knows this event has been "seen" (freshness).
+    const openedId = isPartial ? data.event_id || data.id : data.id;
+    if (openedId) trackEventInteraction(openedId, "CLICKED");
+
     if (isPartial) {
       navigation.navigate("EventProfile", {
         eventId: data.event_id || data.id,
