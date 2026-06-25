@@ -5,6 +5,7 @@ import {
   TouchableOpacity,
   StyleSheet,
   ScrollView,
+  Alert,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
@@ -29,11 +30,28 @@ import { RootStackParamList } from "../../types/types";
 import HostTopBanner from "../../components/HostTopBanner";
 import HostBottomNav from "../../components/HostBottomNav";
 import { bannerGradient, electricGradient } from "../../styles/colours";
+import { useAuth } from "../../context/AuthContext";
 
 const HostSettingsScreen = () => {
   // 👇 FIX 2: Tell the hook to use your specific route list
   const navigation =
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const { signOut } = useAuth();
+
+  const handleLogout = () => {
+    Alert.alert("Log Out", "Are you sure you want to log out?", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Log Out",
+        style: "destructive",
+        onPress: async () => {
+          // End the session and wipe the back stack so they can't return.
+          await signOut();
+          navigation.reset({ index: 0, routes: [{ name: "Welcome" }] });
+        },
+      },
+    ]);
+  };
 
   const SettingsItem = ({
     icon,
@@ -176,7 +194,7 @@ const HostSettingsScreen = () => {
               icon={<LogOut color="#ef4444" size={20} />}
               label="Log Out"
               isDestructive
-              onPress={() => console.log("Log Out")}
+              onPress={handleLogout}
             />
           </View>
         </ScrollView>

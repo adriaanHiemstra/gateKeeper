@@ -27,6 +27,7 @@ import Animated, {
   withSpring,
   withDelay,
   withTiming,
+  withSequence,
 } from "react-native-reanimated";
 import {
   Video,
@@ -43,8 +44,8 @@ import { supabase } from "../lib/supabase";
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("screen");
 
-// 👇 FIX: Cap the height so it never spills off the top/bottom of smaller screens
-const CARD_HEIGHT = Math.min(SCREEN_WIDTH * 1.6, SCREEN_HEIGHT * 0.75);
+// Fallback height when no explicit cardHeight is passed (e.g. the Search preview).
+const DEFAULT_CARD_HEIGHT = Math.min(SCREEN_WIDTH * 1.6, SCREEN_HEIGHT * 0.75);
 
 type EventFeedCardProps = {
   id: string;
@@ -62,6 +63,7 @@ type EventFeedCardProps = {
   minPrice?: string;
   disableTap?: boolean;
   onOpenDiscussion?: () => void;
+  cardHeight?: number;
 };
 
 // 🔥 THE BULLETPROOF HIGH-RES UPSCALER
@@ -144,7 +146,9 @@ const EventFeedCard = ({
   showSocial = true,
   tags = [],
   disableTap = false,
+  cardHeight,
 }: EventFeedCardProps) => {
+  const CARD_HEIGHT = cardHeight ?? DEFAULT_CARD_HEIGHT;
   const [isFullScreen, setIsFullScreen] = useState(false);
   const [groupedCategories, setGroupedCategories] = useState<
     Record<string, string[]>
@@ -158,6 +162,8 @@ const EventFeedCard = ({
 
   const scale = useSharedValue(0);
   const opacity = useSharedValue(0);
+  const burstRotate = useSharedValue(0); // little wiggle on the big burst heart
+  const btnScale = useSharedValue(1); // squish-pop on the heart button itself
 
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isMuted, setIsMuted] = useState(false);
@@ -208,17 +214,39 @@ const EventFeedCard = ({
   const handleLike = () => {
     toggleSave();
 
+    // Every tap gets a tactile squish-then-overshoot pop on the button.
+    btnScale.value = withSequence(
+      withTiming(0.8, { duration: 90 }),
+      withSpring(1, { damping: 5, stiffness: 220 }),
+    );
+
+    // Only a "like" (not an un-like) fires the big celebratory burst.
     if (!isSaved) {
       scale.value = 0;
       opacity.value = 1;
-      scale.value = withSpring(1, { damping: 15 });
-      opacity.value = withDelay(500, withTiming(0, { duration: 300 }));
+      burstRotate.value = 0;
+      // Springy overshoot so the heart "pops" instead of easing in flatly.
+      scale.value = withSpring(1, { damping: 9, stiffness: 140 });
+      // Tiny wiggle for personality.
+      burstRotate.value = withSequence(
+        withTiming(-8, { duration: 80 }),
+        withTiming(6, { duration: 80 }),
+        withTiming(0, { duration: 80 }),
+      );
+      opacity.value = withDelay(450, withTiming(0, { duration: 350 }));
     }
   };
 
   const heartStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: Math.max(scale.value, 0) }],
+    transform: [
+      { scale: Math.max(scale.value, 0) },
+      { rotate: `${burstRotate.value}deg` },
+    ],
     opacity: opacity.value,
+  }));
+
+  const heartButtonStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: btnScale.value }],
   }));
 
   const onViewableItemsChanged = useCallback(({ viewableItems }: any) => {
@@ -290,8 +318,9 @@ const EventFeedCard = ({
   return (
     <>
       <View
-        // 👇 FIX: Added overflow-hidden to stop image bleeding!
-        className="mb-2 bg-black relative overflow-hidden"
+        // overflow-hidden stops the image bleeding; height/spacing is driven by
+        // the parent slot in HomeScreen so the feed snaps cleanly.
+        className="bg-black relative overflow-hidden"
         style={{ height: CARD_HEIGHT, width: SCREEN_WIDTH }}
       >
         <Pressable
@@ -403,13 +432,16 @@ const EventFeedCard = ({
             <View className="flex-1 items-end">
               <TouchableOpacity
                 onPress={handleLike}
+                activeOpacity={0.8}
                 className="bg-white/20 p-3 rounded-full backdrop-blur-md"
               >
-                <Heart
-                  color={isSaved ? "#FA8900" : "white"}
-                  fill={isSaved ? "#FA8900" : "none"}
-                  size={32}
-                />
+                <Animated.View style={heartButtonStyle}>
+                  <Heart
+                    color={isSaved ? "#FA8900" : "white"}
+                    fill={isSaved ? "#FA8900" : "none"}
+                    size={32}
+                  />
+                </Animated.View>
               </TouchableOpacity>
             </View>
           </View>

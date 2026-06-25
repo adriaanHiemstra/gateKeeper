@@ -40,10 +40,19 @@ import BottomNav from "../components/BottomNav";
 import TopBanner from "../components/TopBanner";
 import { bannerGradient } from "../styles/colours";
 
-const { width } = Dimensions.get("window");
+const { width, height } = Dimensions.get("window");
 const HEADER_HEIGHT = 100;
 const PANEL_WIDTH = width * 0.85;
-const SNAP_INTERVAL = width * 1.6 + 8;
+
+// Feed card sizing. Fit a whole card (including the VIEW EVENT button) between
+// the header and the bottom nav, leaving a small peek of the next card so the
+// feed reads as a vertical pager. Every slot is the SAME height (SNAP_INTERVAL),
+// which is what keeps the snap from drifting and hiding the button as you scroll.
+const NAV_HEIGHT = 80; // BottomNav is h-20
+const CARD_PEEK = 48; // how much of the next card peeks above the nav
+const CARD_GAP = 12; // gap between cards
+const CARD_HEIGHT = height - HEADER_HEIGHT - NAV_HEIGHT - CARD_PEEK - CARD_GAP;
+const SNAP_INTERVAL = CARD_HEIGHT + CARD_GAP;
 
 const HomeScreen = () => {
   const navigation =
@@ -352,9 +361,11 @@ const HomeScreen = () => {
                 const hostProfile = Array.isArray(eventObj?.profiles) ? eventObj.profiles[0] : eventObj?.profiles;
 
                 return (
-                  <PostFeedCard
-                    id={item.id}
-                    eventId={item.event_id}
+                  <View style={{ height: SNAP_INTERVAL }}>
+                    <PostFeedCard
+                      cardHeight={CARD_HEIGHT}
+                      id={item.id}
+                      eventId={item.event_id}
                     caption={item.caption}
                     image={item.image_url}
                     eventTitle={eventObj?.title || "Unknown Event"}
@@ -375,7 +386,8 @@ const HomeScreen = () => {
                         eventTitle: eventObj?.title || "Event",
                       })
                     }*/
-                  />
+                    />
+                  </View>
                 );
               }
 
@@ -392,8 +404,9 @@ const HomeScreen = () => {
                 : require("../assets/profile-pic-1.png");
 
               return (
-                <View className="mb-6">
+                <View style={{ height: SNAP_INTERVAL }}>
                   <EventFeedCard
+                    cardHeight={CARD_HEIGHT}
                     id={item.id}
                     title={item.title}
                     hostName={item.profiles?.username || "Unknown Host"}
