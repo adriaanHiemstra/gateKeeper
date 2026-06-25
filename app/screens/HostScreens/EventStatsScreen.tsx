@@ -240,10 +240,10 @@ const fetchAnalytics = async () => {
     <View className="flex-1 bg-white/5 border border-white/10 p-4 rounded-2xl mr-4 min-w-[150px]">
       <View className="flex-row justify-between items-start mb-3">
         <View className="bg-white/10 p-2 rounded-full">{icon}</View>
-        <View className="flex-row items-center bg-green-500/20 px-2 py-1 rounded-md">
+        {/*<View className="flex-row items-center bg-green-500/20 px-2 py-1 rounded-md">
           <ArrowUpRight color="#4ade80" size={12} className="mr-1" />
           <Text className="text-green-400 text-xs font-bold">{change}</Text>
-        </View>
+        </View>*/}
       </View>
       <Text className="text-gray-400 text-sm font-medium mb-1">{label}</Text>
       <Text className="text-white text-2xl font-bold">{value || "0"}</Text>
@@ -374,7 +374,7 @@ const fetchAnalytics = async () => {
               <View className="flex-row justify-between items-center mb-2">
                 <Text className="text-gray-400 text-sm">Revenue over time</Text>
                 <View className="flex-row bg-white/10 rounded-lg p-1">
-                  {["week", "month"].map((t) => (
+                  {["week"].map((t) => (
                     <TouchableOpacity
                       key={t}
                       onPress={() => setTimeRange(t as any)}

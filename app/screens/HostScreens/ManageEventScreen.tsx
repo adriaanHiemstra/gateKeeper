@@ -245,9 +245,9 @@ const ManageEventScreen = () => {
                 >
                   <View className="flex-row justify-between items-start mb-2">
                     <CreditCard color="white" size={20} opacity={0.8} />
-                    <Text className="text-green-300 font-bold text-xs">
+                    {/*<Text className="text-green-300 font-bold text-xs">
                       +15%
-                    </Text>
+                    </Text>*/}
                   </View>
                   <Text className="text-white/80 text-sm font-medium">
                     Total Sales
@@ -260,9 +260,9 @@ const ManageEventScreen = () => {
                 <View className="flex-1 bg-white/5 border border-white/10 rounded-2xl p-5">
                   <View className="flex-row justify-between items-start mb-2">
                     <TrendingUp color="#D087FF" size={20} />
-                    <Text className="text-white/60 text-xs">
+                    {/*<Text className="text-white/60 text-xs">
                       {stats.percentageSold}% Cap
-                    </Text>
+                    </Text>*/}
                   </View>
                   <Text className="text-gray-400 text-sm font-medium">
                     Tickets Sold
@@ -309,7 +309,7 @@ const ManageEventScreen = () => {
                     navigation.navigate("PromoteEvent", { eventId })
                   }
                 />
-                <ManagementAction
+                {/*<ManagementAction
                   icon={<MessageCircle color="white" size={24} />}
                   label="Discussion"
                   onPress={() =>
@@ -318,7 +318,7 @@ const ManageEventScreen = () => {
                       eventTitle: eventTitle,
                     })
                   }
-                />
+                />*/}
               </View>
 
               {/* 3. TICKET BREAKDOWN */}

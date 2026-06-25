@@ -50,7 +50,7 @@ const HostDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [totalRevenue, setTotalRevenue] = useState("R 0");
   const [ticketsSold, setTicketsSold] = useState(0);
-  const [revenueChange, setRevenueChange] = useState("+0% this week");
+  //const [revenueChange, setRevenueChange] = useState("+0% this week");
   const [recentActivity, setRecentActivity] = useState<any[]>([]);
 
   // --- Animation Logic ---
@@ -112,7 +112,7 @@ const HostDashboard = () => {
       if (eventIds.length === 0) {
         setTotalRevenue("R 0");
         setTicketsSold(0);
-        setRevenueChange("+0% this week");
+        //setRevenueChange("+0% this week");
         setRecentActivity([]);
         return;
       }
@@ -151,8 +151,8 @@ const HostDashboard = () => {
 
       const pctChange =
         totalRevSum > 0 ? Math.round((weeklyRevSum / totalRevSum) * 100) : 0;
-      setRevenueChange(`+${pctChange}% this week`);
-      
+      //setRevenueChange(`+${pctChange}% this week`);
+
       // 5. FETCH LIVE FEED (Derived Approach)
       const activities: any[] = [];
 
@@ -355,11 +355,11 @@ const HostDashboard = () => {
                       {ticketsSold} Tickets Sold
                     </Text>
                   </View>
-                  <View className="bg-black/20 rounded-lg px-3 py-2">
-                    <Text className="text-green-300 font-bold">
+                  {/* <View className="bg-black/20 rounded-lg px-3 py-2">
+                    { <Text className="text-green-300 font-bold">
                       {revenueChange}
-                    </Text>
-                  </View>
+                    </Text>}
+                  </View>*/}
                 </View>
               </LinearGradient>
             </TouchableOpacity>
