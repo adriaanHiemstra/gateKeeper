@@ -25,7 +25,13 @@ import { useNavigation, useFocusEffect } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 
 import { supabase } from "../lib/supabase";
+import { rankEvents } from "../lib/feedAlgorithm";
 import { RootStackParamList } from "../types/types";
+
+// How many items we pull per refresh. FlatList virtualizes rendering, so a
+// healthy pool here is fine — we score these client-side and show the best first.
+const MAX_EVENTS = 200;
+const MAX_UPDATES = 30;
 
 import EventFeedCard from "../components/EventFeedCard";
 import PostFeedCard from "../components/PostFeedCard";
@@ -42,12 +48,9 @@ const HomeScreen = () => {
   const navigation =
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
 
-  // 🔥 PAGINATION STATE
+  // Feed state
   const [feedData, setFeedData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [page, setPage] = useState(0);
-  const [hasMore, setHasMore] = useState(true);
 
   // Panel State
   const [isPanelOpen, setIsPanelOpen] = useState(false);
@@ -56,110 +59,132 @@ const HomeScreen = () => {
 
   useFocusEffect(
     useCallback(() => {
-      // Whenever the screen is focused (e.g., coming from another tab), refresh from the top
-      fetchFeed(0);
+      // Refresh whenever the screen comes into focus (e.g. switching back to this tab).
+      loadFeed();
     }, []),
   );
 
-const fetchFeed = async () => {
+  // Builds the personalized feed: fetch a pool of upcoming events + posts, score
+  // the events for this user, then interleave a post every few events.
+  const loadFeed = async () => {
     try {
+      setLoading(true);
       const {
         data: { user },
       } = await supabase.auth.getUser();
-      const today = new Date().toISOString();
-      const todayNow = new Date();
+      const nowIso = new Date().toISOString();
 
-      // 1. Fetch Events
-      const { data: eventsData } = await supabase
-        .from("events")
-        .select(
-          `
-          *,
-          profiles:host_id ( username, avatar_url ),
-          ticket_tiers (*) 
-        `,
-        )
-        .gte("date", today)
-        .order("date", { ascending: true })
-        .limit(20);
+      // Fetch the building blocks in parallel for speed.
+      const [eventsRes, updatesRes, profileRes, friendsRes] = await Promise.all([
+        supabase
+          .from("events")
+          .select(
+            `*, profiles:host_id ( username, avatar_url ), ticket_tiers (*)`,
+          )
+          .eq("is_public", true)
+          .gte("date", nowIso)
+          .order("date", { ascending: true })
+          .limit(MAX_EVENTS),
+        supabase
+          .from("event_updates")
+          .select(
+            `*, events ( title, id, date, end_date, profiles:host_id ( username, avatar_url ) )`,
+          )
+          .order("created_at", { ascending: false })
+          .limit(MAX_UPDATES),
+        user
+          ? supabase.from("profiles").select("interests").eq("id", user.id).single()
+          : Promise.resolve({ data: null as any }),
+        // Friendships store the user on either side, so match both columns.
+        user
+          ? supabase
+              .from("friendships")
+              .select("user_id_1, user_id_2")
+              .or(`user_id_1.eq.${user.id},user_id_2.eq.${user.id}`)
+          : Promise.resolve({ data: [] as any[] }),
+      ]);
 
-      // 2. Fetch Updates
-      // 🚨 FIX: Added profiles nested query to fetch the creator's avatar and username
-      const { data: updatesData } = await supabase
-        .from("event_updates")
-        .select(
-          `
-            *,
-            events ( 
-              title, 
-              id, 
-              date, 
-              end_date,
-              profiles:host_id ( username, avatar_url )
-            )
-        `,
-        )
-        .order("created_at", { ascending: false })
-        .range(postOffset, postOffset + POST_LIMIT - 1);
+      const events = eventsRes.data || [];
+      const updates = updatesRes.data || [];
 
-      // --- 4. END OF FEED CHECK ---
-      if (
-        eventsData.length === 0 &&
-        (!updatesData || updatesData.length === 0)
-      ) {
-        setHasMore(false);
+      // --- Build the scoring context for the algorithm ---
+
+      // 1. The user's interest categories (stored as a text[] of category names).
+      const interests: string[] = (profileRes.data?.interests || []).map(
+        (i: string) => String(i).toLowerCase(),
+      );
+
+      // 2. The user's friend ids (the "other" side of each friendship row).
+      const friendIds: string[] = (friendsRes.data || [])
+        .map((f: any) => (f.user_id_1 === user?.id ? f.user_id_2 : f.user_id_1))
+        .filter(Boolean);
+
+      // 3. How many friends are going to / interested in each event.
+      const friendIntentByEvent: Record<string, number> = {};
+      if (friendIds.length > 0) {
+        const { data: intents } = await supabase
+          .from("event_interactions")
+          .select("event_id, user_id, intent")
+          .in("user_id", friendIds)
+          .in("intent", ["GOING", "SAVED"]);
+        (intents || []).forEach((row: any) => {
+          if (!row.event_id) return;
+          friendIntentByEvent[row.event_id] =
+            (friendIntentByEvent[row.event_id] || 0) + 1;
+        });
       }
 
-      const formattedUpdates = (updatesData || [])
-        .filter((u) => {
+      // 4. Events the user has already opened — so we can keep the feed fresh.
+      const seenEventIds = new Set<string>();
+      if (user) {
+        const { data: seen } = await supabase
+          .from("event_interactions")
+          .select("event_id")
+          .eq("user_id", user.id)
+          .eq("intent", "CLICKED");
+        (seen || []).forEach((r: any) => r.event_id && seenEventIds.add(r.event_id));
+      }
+
+      // --- Rank the events by relevance to this user ---
+      const rankedEvents = rankEvents(events, {
+        interests,
+        friendIntentByEvent,
+        seenEventIds,
+      }).map((e) => ({ ...e, type: "event" }));
+
+      // --- Keep only updates whose event hasn't ended yet ---
+      const nowTime = Date.now();
+      const formattedUpdates = updates
+        .filter((u: any) => {
           if (!u.events) return false;
           const endDate = u.events.end_date
             ? new Date(u.events.end_date)
             : new Date(new Date(u.events.date).getTime() + 24 * 60 * 60 * 1000);
-          return todayNow <= endDate;
+          return nowTime <= endDate.getTime();
         })
-        .map((u) => ({
-          ...u,
-          type: "post",
-          sortTime: new Date(u.created_at).getTime(),
-        }));
+        .map((u: any) => ({ ...u, type: "post" }));
 
-      // --- 5. THE INTERLEAVE STRATEGY (For this specific chunk) ---
-      const newBatch: any[] = [];
-      let eventIdx = 0;
+      // --- Interleave: drop a post in after every 3rd event ---
+      const feed: any[] = [];
       let postIdx = 0;
-
-      while (
-        eventIdx < formattedEvents.length ||
-        postIdx < formattedUpdates.length
-      ) {
-        if (postIdx < formattedUpdates.length) {
-          newBatch.push(formattedUpdates[postIdx]);
+      rankedEvents.forEach((event, i) => {
+        feed.push(event);
+        if ((i + 1) % 3 === 0 && postIdx < formattedUpdates.length) {
+          feed.push(formattedUpdates[postIdx]);
           postIdx++;
         }
-        if (eventIdx < formattedEvents.length) {
-          newBatch.push(formattedEvents[eventIdx]);
-          eventIdx++;
-        }
-        if (eventIdx < formattedEvents.length) {
-          newBatch.push(formattedEvents[eventIdx]);
-          eventIdx++;
-        }
+      });
+      // Append any posts we didn't get to.
+      while (postIdx < formattedUpdates.length) {
+        feed.push(formattedUpdates[postIdx]);
+        postIdx++;
       }
 
-      // --- 6. GLUE TO FEED ---
-      if (pageIndex === 0) {
-        setFeedData(newBatch);
-      } else {
-        setFeedData((prev) => [...prev, ...newBatch]);
-      }
-
-      setPage(pageIndex);
+      setFeedData(feed);
     } catch (error: any) {
-      console.log("Fetch Error:", error.message);
+      console.log("Feed load error:", error?.message ?? error);
     } finally {
       setLoading(false);
-      setLoadingMore(false);
     }
   };
 
@@ -268,18 +293,6 @@ const fetchFeed = async () => {
             snapToAlignment="start"
             decelerationRate="fast"
             disableIntervalMomentum={true}
-            // 🔥 PAGINATION TRIGGERS HERE
-            onEndReached={() => {
-              if (hasMore) fetchFeed(page + 1);
-            }}
-            onEndReachedThreshold={0.5} // Trigger when 50% through the last card
-            ListFooterComponent={
-              loadingMore ? (
-                <View className="py-10 items-center justify-center">
-                  <ActivityIndicator size="large" color="#FA8900" />
-                </View>
-              ) : null
-            }
             renderItem={({ item }) => {
               if (item.type === "post") {
                 // Safely extract the nested event and profile data
@@ -342,7 +355,9 @@ const fetchFeed = async () => {
                         : require("../assets/event-placeholder.png")
                     }
                     attendeesCount={0}
-                    onOpenSocial={() => openPanel([], item.title)}
+                    // The card loads "which friends are going" itself (useEventFriends);
+                    // it hands that list back here so the slide-in panel can show them.
+                    onOpenSocial={(friends) => openPanel(friends, item.title)}
                     onPressHost={() =>
                       navigation.navigate("EventHostProfile", {
                         hostId: item.host_id,

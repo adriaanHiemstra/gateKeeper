@@ -197,7 +197,7 @@ const Onboarding = () => {
       const ext = asset.uri.split(".").pop() || "jpeg";
       setProfileImage({
         uri: asset.uri,
-        base64: asset.base64,
+        base64: asset.base64!, // guarded by the `result.assets[0].base64` check above
         ext,
       });
     }

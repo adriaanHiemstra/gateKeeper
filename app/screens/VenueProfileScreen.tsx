@@ -128,6 +128,7 @@ const VenueProfileScreen = () => {
       style={{ width: ITEM_WIDTH, height: ITEM_WIDTH * 1.25 }}
       onPress={() =>
         navigation.navigate("EventProfile", {
+          eventId: item.id,
           eventName: item.title,
           attendees: 100,
           logo: item.image,
