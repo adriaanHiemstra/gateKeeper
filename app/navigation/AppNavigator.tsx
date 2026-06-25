@@ -69,10 +69,17 @@ import PromoteEventScreen from "../screens/HostScreens/PromoteEventScreen";
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
-export default function AppNavigator() {
+type AppNavigatorProps = {
+  // Chosen at runtime from the auth/session state (see App.tsx).
+  initialRouteName?: keyof RootStackParamList;
+};
+
+export default function AppNavigator({
+  initialRouteName = "SignUp",
+}: AppNavigatorProps) {
   return (
     <Stack.Navigator
-      initialRouteName="SignUp"
+      initialRouteName={initialRouteName}
       screenOptions={{ headerShown: false }}
     >
       {/* Main Tabs */}

@@ -78,11 +78,18 @@ const SignUp = () => {
 
       if (error) throw error;
 
-      Alert.alert(
-        "Success!",
-        "Your account has been created. You can now log in."
-      );
-      navigation.navigate("Login");
+      // If email confirmation is OFF, signUp returns a live session — the user
+      // is already authenticated, so take them straight into onboarding.
+      if (data.session) {
+        navigation.replace("Onboarding");
+      } else {
+        // Email confirmation is ON: they must confirm before they can log in.
+        Alert.alert(
+          "Almost there!",
+          "Check your email to confirm your account, then log in."
+        );
+        navigation.navigate("Login");
+      }
     } catch (error: any) {
       Alert.alert("Sign Up Error", error.message);
     } finally {

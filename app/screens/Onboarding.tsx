@@ -369,6 +369,7 @@ const Onboarding = () => {
           avatar_url: finalAvatarUrl, // <-- SAVE THE URL
           phone_number: phoneNumber || null,
           interests: selectedTags.map((t) => t.name),
+          onboarded: true, // <-- mark onboarding complete so we don't show it again
         })
         .eq("id", user.id);
 
