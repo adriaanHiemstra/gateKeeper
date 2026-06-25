@@ -126,10 +126,12 @@ const SelectorButton = ({ icon, label, value, onPress, placeholder }: any) => (
     className="flex-1 flex-row items-center bg-white/5 border border-white/10 rounded-2xl px-4 h-16 mb-4"
   >
     <View className="mr-4 opacity-70">{icon}</View>
+    {/* 🚨 FIX: Added `flex-1` here so long text strictly stays inside the box and truncates cleanly! */}
     <Text
-      className={`text-lg font-medium ${
+      className={`flex-1 text-lg font-medium ${
         value ? "text-white" : "text-gray-500"
       }`}
+      style={{ fontFamily: "Jost-Medium" }}
       numberOfLines={1}
     >
       {value || placeholder}
@@ -211,17 +213,44 @@ const EditEventScreen = () => {
 
   const todayDateString = new Date().toISOString().split("T")[0];
 
+  const getTimeInMinutes = (time: string) => {
+    const [h, m] = time.split(":").map(Number);
+    return h * 60 + m;
+  };
+
   const availableTimes = useMemo(() => {
+    const now = new Date();
+    const currentMinutes = now.getHours() * 60 + now.getMinutes();
+    let minimumMinutes = 0;
+
     if (activeTimeModal === "start" && startDate === todayDateString) {
-      const now = new Date();
-      const currentMinutes = now.getHours() * 60 + now.getMinutes();
-      return ALL_TIMES.filter((t) => {
-        const [h, m] = t.split(":").map(Number);
-        return h * 60 + m > currentMinutes;
-      });
+      minimumMinutes = currentMinutes;
+    } else if (
+      activeTimeModal === "end" &&
+      (endDate || startDate) === todayDateString
+    ) {
+      minimumMinutes = currentMinutes;
     }
-    return ALL_TIMES;
-  }, [activeTimeModal, startDate]);
+
+    const minimumStartTimeMinutes =
+      activeTimeModal === "end" &&
+      startTime &&
+      (!endDate || endDate === startDate)
+        ? getTimeInMinutes(startTime)
+        : null;
+
+    return ALL_TIMES.filter((t) => {
+      const minutes = getTimeInMinutes(t);
+      if (minutes <= minimumMinutes) return false;
+      if (
+        minimumStartTimeMinutes !== null &&
+        minutes <= minimumStartTimeMinutes
+      ) {
+        return false;
+      }
+      return true;
+    });
+  }, [activeTimeModal, startDate, endDate, startTime, todayDateString]);
 
   // --- 1. FETCH DATA ---
   useEffect(() => {
@@ -238,7 +267,7 @@ const EditEventScreen = () => {
     if (data) setAvailableTags(data.map((cat: any) => cat.name));
   };
 
-  const fetchEventData = async () => {
+const fetchEventData = async () => {
     try {
       const { data, error } = await supabase
         .from("events")
@@ -257,7 +286,9 @@ const EditEventScreen = () => {
       setLocationLng(data.lng || 0);
 
       setIsPublic(data.is_public);
-      setSelectedTags(data.tags || []);
+      
+      // 🚨 FIX: Load from the 'categories' DB column, not 'tags'!
+      setSelectedTags(data.categories || []);
 
       const start = new Date(data.date);
       setStartDate(start.toISOString().split("T")[0]);
@@ -416,7 +447,23 @@ const EditEventScreen = () => {
   };
 
   // --- MAIN SAVE HANDLER ---
+// --- MAIN SAVE HANDLER ---
   const handleSave = async () => {
+    // 🚨 FIX: Mirrors the Create screen's safety validation checks
+    if (
+      !title ||
+      !startDate ||
+      !startTime ||
+      !location ||
+      mediaItems.length === 0
+    ) {
+      Alert.alert(
+        "Missing Info",
+        "Please fill in all required fields and add at least one image/video."
+      );
+      return;
+    }
+
     setSaving(true);
     try {
       // 1. Process Images
@@ -434,7 +481,7 @@ const EditEventScreen = () => {
           ? new Date(`${endDate}T${endTime}:00`).toISOString()
           : null;
 
-      // 3. Update DB (✅ Now includes lat/lng and category logic!)
+      // 3. Update DB
       const { error: eventError } = await supabase
         .from("events")
         .update({
@@ -446,8 +493,8 @@ const EditEventScreen = () => {
           date: startISO,
           end_date: endISO,
           is_public: isPublic,
-          tags: selectedTags,
-          category: selectedTags[0] || "Other", // Sync category
+          // 🚨 FIX: Removes non-existent tags/category columns and saves cleanly to the 'categories' array!
+          categories: selectedTags.length > 0 ? selectedTags : ["Other"], 
           images: processedImages,
           banner_url: processedImages[0] || null,
         })
@@ -469,8 +516,9 @@ const EditEventScreen = () => {
         const tiersData = tickets.map((t) => ({
           event_id: eventId,
           name: t.name,
-          price: parseFloat(t.price),
-          quantity_total: parseInt(t.quantity),
+          // 🚨 FIX: Added default fallback numbers so empty fields don't crash Supabase!
+          price: parseFloat(t.price) || 0,
+          quantity_total: parseInt(t.quantity) || 100,
           is_active: t.active,
           id: t.id || generateUUID(),
         }));
@@ -484,6 +532,8 @@ const EditEventScreen = () => {
       Alert.alert("Success", "Event updated successfully!");
       navigation.goBack();
     } catch (error: any) {
+      // 🚨 FIX: Logs the exact database error in your terminal if it fails!
+      console.error("SAVE ERROR:", error);
       Alert.alert("Error", error.message);
     } finally {
       setSaving(false);
@@ -505,10 +555,14 @@ const EditEventScreen = () => {
       <HostTopBanner />
 
       <SafeAreaView className="flex-1" edges={["left", "right"]}>
-        <KeyboardAwareScrollView
+      <KeyboardAwareScrollView
           className="flex-1 px-6"
-          contentContainerStyle={{ paddingTop: 120, paddingBottom: 140 }}
           showsVerticalScrollIndicator={false}
+          contentContainerStyle={{ paddingTop: 120, paddingBottom: 140 }}
+          enableOnAndroid={true}
+          extraScrollHeight={120}
+          keyboardShouldPersistTaps="handled"
+          enableAutomaticScroll={true}
         >
           <View className="flex-row items-center mb-8">
             <TouchableOpacity
@@ -1181,8 +1235,22 @@ const EditEventScreen = () => {
               </TouchableOpacity>
             </View>
             <FlatList
+              // 🚨 FIX: Added key so it properly re-renders when data changes
+              key={`${activeTimeModal}-${availableTimes.length}`}
               data={availableTimes}
-              keyExtractor={(i) => i}
+              keyExtractor={(item) => item}
+              // 🚨 FIX: Automatically scrolls down to 12:00 when opened!
+              initialScrollIndex={
+                availableTimes.indexOf("12:00") !== -1 
+                  ? Math.max(0, availableTimes.indexOf("12:00") - 2) 
+                  : 0
+              }
+              // 🚨 FIX: Tells the list exactly how tall each item is to calculate the jump
+              getItemLayout={(data, index) => ({
+                length: 56,
+                offset: 56 * index,
+                index,
+              })}
               renderItem={({ item }) => (
                 <TouchableOpacity
                   onPress={() => {
@@ -1190,7 +1258,9 @@ const EditEventScreen = () => {
                     else setEndTime(item);
                     setActiveTimeModal(null);
                   }}
-                  className="p-4 border-b border-white/5 flex-row justify-between"
+                  // 🚨 FIX: Exact height inline style matching the length layout above
+                  style={{ height: 56 }}
+                  className="px-4 border-b border-white/5 flex-row items-center justify-between"
                 >
                   <Text className="text-white text-lg font-bold">{item}</Text>
                 </TouchableOpacity>

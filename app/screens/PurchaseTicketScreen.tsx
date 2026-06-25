@@ -144,14 +144,16 @@ const PurchaseTicketScreen = () => {
     );
   };
 
-  const handleCheckout = async () => {
+const handleCheckout = async () => {
     if (total === 0) {
       Alert.alert("Cart Empty", "Please select at least one ticket.");
       return;
     }
 
-    const purchasedTier = tickets.find((t) => t.quantity > 0);
-    if (!purchasedTier) return;
+    // 🚨 1. Find ALL tiers where the user selected at least 1 ticket
+    const purchasedTiers = tickets.filter((t) => t.quantity > 0);
+    if (purchasedTiers.length === 0) return;
+    
     const validEventId = eventId!;
 
     Alert.alert(
@@ -174,36 +176,46 @@ const PurchaseTicketScreen = () => {
                 return;
               }
 
-              const uniqueQrCode = `GK-${validEventId.substring(
-                0,
-                4
-              )}-${Date.now().toString().slice(-6)}`;
+              // 🚨 2. Build an array of tickets to bulk insert
+              const ticketsToInsert: any[] = [];
 
-              const { error } = await supabase
-                .from("tickets")
-                .insert([
-                  {
+              purchasedTiers.forEach((tier) => {
+                // Loop through the QUANTITY selected for this tier
+                for (let i = 0; i < tier.quantity; i++) {
+                  // Added a random number at the end so loop doesn't create duplicate QR codes in the same millisecond!
+                  const uniqueQrCode = `GK-${validEventId.substring(
+                    0,
+                    4
+                  )}-${Date.now().toString().slice(-6)}-${Math.floor(Math.random() * 1000)}`;
+
+                  ticketsToInsert.push({
                     event_id: validEventId,
                     user_id: user.id,
-                    tier_id: purchasedTier.id,
+                    tier_id: tier.id,
                     qr_code: uniqueQrCode,
                     status: "valid",
                     purchased_at: new Date().toISOString(),
-                  },
-                ])
-                .select()
-                .single();
+                  });
+                }
+              });
+
+              // 🚨 3. Bulk insert the entire array into Supabase
+              const { error } = await supabase
+                .from("tickets")
+                .insert(ticketsToInsert)
+                .select();
 
               if (error) throw error;
 
+              // 4. Navigate to the success screen (passing the first ticket's QR code to display)
               navigation.navigate("TicketDisplay", {
                 eventId: validEventId,
                 eventTitle: eventDetails.name,
-                ticketId: `#${uniqueQrCode}`,
+                ticketId: `#${ticketsToInsert[0].qr_code}`, 
                 eventImage: eventDetails.banner,
                 eventLocation: eventDetails.location,
                 eventTime: eventDetails.time,
-                ticketTierName: purchasedTier.name,
+                ticketTierName: purchasedTiers[0].name, 
                 ticketPrice: total.toFixed(0),
               });
             } catch (error: any) {
@@ -322,7 +334,7 @@ const PurchaseTicketScreen = () => {
                   >
                     <Minus color="white" size={16} />
                   </TouchableOpacity>
-                  <Text className="text-white font-bold text-lg mx-4 w-4 text-center">
+                  <Text className="text-white font-bold text-lg mx-2 w-8 text-center">
                     {t.quantity}
                   </Text>
                   <TouchableOpacity

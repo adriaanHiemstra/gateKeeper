@@ -126,7 +126,7 @@ const SelectorButton = ({ icon, label, value, onPress, placeholder }: any) => (
   >
     <View className="mr-4 opacity-70">{icon}</View>
     <Text
-      className={`text-lg font-medium ${
+      className={`flex-1 text-lg font-medium ${
         value ? "text-white" : "text-gray-500"
       }`}
       style={{ fontFamily: "Jost-Medium" }}
@@ -231,17 +231,44 @@ const CreateEventScreen = () => {
 
   const todayDateString = new Date().toISOString().split("T")[0];
 
+  const getTimeInMinutes = (time: string) => {
+    const [h, m] = time.split(":").map(Number);
+    return h * 60 + m;
+  };
+
   const availableTimes = useMemo(() => {
+    const now = new Date();
+    const currentMinutes = now.getHours() * 60 + now.getMinutes();
+    let minimumMinutes = 0;
+
     if (activeTimeModal === "start" && startDate === todayDateString) {
-      const now = new Date();
-      const currentMinutes = now.getHours() * 60 + now.getMinutes();
-      return ALL_TIMES.filter((t) => {
-        const [h, m] = t.split(":").map(Number);
-        return h * 60 + m > currentMinutes;
-      });
+      minimumMinutes = currentMinutes;
+    } else if (
+      activeTimeModal === "end" &&
+      (endDate || startDate) === todayDateString
+    ) {
+      minimumMinutes = currentMinutes;
     }
-    return ALL_TIMES;
-  }, [activeTimeModal, startDate]);
+
+    const minimumStartTimeMinutes =
+      activeTimeModal === "end" &&
+      startTime &&
+      (!endDate || endDate === startDate)
+        ? getTimeInMinutes(startTime)
+        : null;
+
+    return ALL_TIMES.filter((t) => {
+      const minutes = getTimeInMinutes(t);
+      if (minutes <= minimumMinutes) return false;
+      if (
+        minimumStartTimeMinutes !== null &&
+        minutes <= minimumStartTimeMinutes
+      ) {
+        return false;
+      }
+      return true;
+    });
+  }, [activeTimeModal, startDate, endDate, startTime, todayDateString]);
 
   // --- HANDLERS ---
 
@@ -390,9 +417,9 @@ const CreateEventScreen = () => {
           lng: locationLng, // ✅ Uses the state we got from Google
           banner_url: uploadedUrls[0],
           images: uploadedUrls,
-          tags: selectedTags,
+          //tags: selectedTags,
           is_public: isPublic,
-          category: selectedTags[0] || "Other",
+          categories: selectedTags.length > 0 ? selectedTags : ["Other"],
         })
         .select()
         .single();
@@ -1099,8 +1126,19 @@ const CreateEventScreen = () => {
               </TouchableOpacity>
             </View>
             <FlatList
+              key={`${activeTimeModal}-${availableTimes.length}`}
               data={availableTimes}
               keyExtractor={(item) => item}
+              initialScrollIndex={
+                availableTimes.indexOf("12:00") !== -1 
+                  ? Math.max(0, availableTimes.indexOf("12:00") - 2) 
+                  : 0
+              }
+              getItemLayout={(data, index) => ({
+                length: 56,
+                offset: 56 * index,
+                index,
+              })}
               renderItem={({ item }) => (
                 <TouchableOpacity
                   onPress={() => {
@@ -1108,7 +1146,9 @@ const CreateEventScreen = () => {
                     else setEndTime(item);
                     setActiveTimeModal(null);
                   }}
-                  className="p-4 border-b border-white/5 flex-row justify-between"
+                  // Using an exact inline height ensures the math in getItemLayout never fails
+                  style={{ height: 56 }}
+                  className="px-4 border-b border-white/5 flex-row items-center justify-between"
                 >
                   <Text className="text-white text-lg font-bold">{item}</Text>
                 </TouchableOpacity>

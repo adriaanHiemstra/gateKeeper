@@ -61,74 +61,44 @@ const HomeScreen = () => {
     }, []),
   );
 
-  // --- 🔥 UPDATED FETCH WITH PAGINATION ---
-  const fetchFeed = async (pageIndex: number = 0) => {
-    // Prevent fetching if we are already fetching or have run out of data
-    if (pageIndex > 0 && (loadingMore || !hasMore)) return;
-
-    if (pageIndex === 0) {
-      setLoading(true);
-      setHasMore(true);
-    } else {
-      setLoadingMore(true);
-    }
-
+const fetchFeed = async () => {
     try {
       const {
         data: { user },
       } = await supabase.auth.getUser();
       const today = new Date().toISOString();
+      const todayNow = new Date();
 
-      const EVENT_LIMIT = 20;
-      const POST_LIMIT = 10;
-      const eventOffset = pageIndex * EVENT_LIMIT;
-      const postOffset = pageIndex * POST_LIMIT;
+      // 1. Fetch Events
+      const { data: eventsData } = await supabase
+        .from("events")
+        .select(
+          `
+          *,
+          profiles:host_id ( username, avatar_url ),
+          ticket_tiers (*) 
+        `,
+        )
+        .gte("date", today)
+        .order("date", { ascending: true })
+        .limit(20);
 
-      let eventsData: any[] = [];
-
-      // --- 1. ALGORITHM FEED ---
-      if (user) {
-        const { data: algoData, error: algoError } = await supabase.rpc(
-          "get_recommended_feed",
-          {
-            req_user_id: user.id,
-            p_offset: eventOffset,
-            p_limit: EVENT_LIMIT,
-          },
-        ).select(`
-            *,
-            profiles:host_id ( username, avatar_url ),
-            ticket_tiers (*) 
-          `);
-
-        if (!algoError && algoData && algoData.length > 0) {
-          eventsData = algoData;
-        }
-      }
-
-      // --- 2. COLD START FALLBACK ---
-      if (eventsData.length === 0) {
-        const { data: fallbackData, error: fallbackError } = await supabase
-          .from("events")
-          .select(
-            `
-            *,
-            profiles:host_id ( username, avatar_url ),
-            ticket_tiers (*) 
-          `,
-          )
-          .gte("date", today)
-          .eq("is_public", true)
-          .order("date", { ascending: true })
-          .range(eventOffset, eventOffset + EVENT_LIMIT - 1); // Range handles pagination for standard queries
-
-        if (!fallbackError) eventsData = fallbackData || [];
-      }
-
-      // --- 3. FETCH COMMUNITY UPDATES ---
+      // 2. Fetch Updates
+      // 🚨 FIX: Added profiles nested query to fetch the creator's avatar and username
       const { data: updatesData } = await supabase
         .from("event_updates")
-        .select(`*, events ( title, id )`)
+        .select(
+          `
+            *,
+            events ( 
+              title, 
+              id, 
+              date, 
+              end_date,
+              profiles:host_id ( username, avatar_url )
+            )
+        `,
+        )
         .order("created_at", { ascending: false })
         .range(postOffset, postOffset + POST_LIMIT - 1);
 
@@ -140,11 +110,19 @@ const HomeScreen = () => {
         setHasMore(false);
       }
 
-      const formattedEvents = eventsData.map((e) => ({ ...e, type: "event" }));
-      const formattedUpdates = (updatesData || []).map((u) => ({
-        ...u,
-        type: "post",
-      }));
+      const formattedUpdates = (updatesData || [])
+        .filter((u) => {
+          if (!u.events) return false;
+          const endDate = u.events.end_date
+            ? new Date(u.events.end_date)
+            : new Date(new Date(u.events.date).getTime() + 24 * 60 * 60 * 1000);
+          return todayNow <= endDate;
+        })
+        .map((u) => ({
+          ...u,
+          type: "post",
+          sortTime: new Date(u.created_at).getTime(),
+        }));
 
       // --- 5. THE INTERLEAVE STRATEGY (For this specific chunk) ---
       const newBatch: any[] = [];
@@ -304,64 +282,75 @@ const HomeScreen = () => {
             }
             renderItem={({ item }) => {
               if (item.type === "post") {
+                // Safely extract the nested event and profile data
+                const eventObj = Array.isArray(item.events) ? item.events[0] : item.events;
+                const hostProfile = Array.isArray(eventObj?.profiles) ? eventObj.profiles[0] : eventObj?.profiles;
+
                 return (
                   <PostFeedCard
                     id={item.id}
                     eventId={item.event_id}
                     caption={item.caption}
                     image={item.image_url}
-                    eventTitle={item.events?.title || "Unknown Event"}
-                    hostName={"Event Update"}
-                    hostAvatar={null}
+                    eventTitle={eventObj?.title || "Unknown Event"}
+                    hostName={hostProfile?.username || "Unknown Host"}
+                    
+                    // 🚨 FIX: Pass the raw string URL (or null) instead of the { uri: ... } object!
+                    hostAvatar={hostProfile?.avatar_url || null}
+                    
                     timestamp={new Date(item.created_at).toLocaleDateString()}
-                    attendeesCount={12}
+                    attendeesCount={0}
                     onOpenSocial={() =>
-                      openPanel([], item.events?.title || "Event")
+                      openPanel([], eventObj?.title || "Event")
                     }
                     onViewEvent={() => goToEventProfile(item, true)}
                     onOpenDiscussion={() =>
                       navigation.navigate("EventCommunity", {
                         eventId: item.event_id,
-                        eventTitle: item.events?.title || "Event",
+                        eventTitle: eventObj?.title || "Event",
                       })
                     }
                   />
                 );
               }
 
+              // --- B. RENDER REGULAR EVENT CARD ---
               const tiers = item.ticket_tiers || [];
               const minPrice =
                 tiers.length > 0
                   ? Math.min(...tiers.map((t: any) => parseFloat(t.price) || 0))
                   : null;
 
+              // (Keep your EventFeedCard object logic exactly the same since it works!)
+              const eventAvatar = item.profiles?.avatar_url && item.profiles.avatar_url.trim() !== ""
+                ? { uri: item.profiles.avatar_url }
+                : require("../assets/profile-pic-1.png");
+
               return (
-                <EventFeedCard
-                  id={item.id}
-                  title={item.title}
-                  hostName={item.profiles?.username || "Unknown Host"}
-                  mediaItems={item.images || []}
-                  minPrice={minPrice ? minPrice.toString() : undefined}
-                  tags={item.categories || item.tags || []}
-                  hostAvatar={
-                    item.profiles?.avatar_url
-                      ? { uri: item.profiles.avatar_url }
-                      : require("../assets/profile-pic-1.png")
-                  }
-                  image={
-                    item.banner_url
-                      ? { uri: item.banner_url }
-                      : require("../assets/event-placeholder.png")
-                  }
-                  attendeesCount={12}
-                  onOpenSocial={(friends) => openPanel(friends, item.title)}
-                  onPressHost={() =>
-                    navigation.navigate("EventHostProfile", {
-                      hostId: item.host_id,
-                    })
-                  }
-                  onViewEvent={() => goToEventProfile(item, false)}
-                />
+                <View className="mb-6">
+                  <EventFeedCard
+                    id={item.id}
+                    title={item.title}
+                    hostName={item.profiles?.username || "Unknown Host"}
+                    mediaItems={item.images || []}
+                    minPrice={minPrice ? minPrice.toString() : undefined}
+                    tags={item.categories || []}
+                    hostAvatar={eventAvatar}
+                    image={
+                      item.banner_url
+                        ? { uri: item.banner_url }
+                        : require("../assets/event-placeholder.png")
+                    }
+                    attendeesCount={0}
+                    onOpenSocial={() => openPanel([], item.title)}
+                    onPressHost={() =>
+                      navigation.navigate("EventHostProfile", {
+                        hostId: item.host_id,
+                      })
+                    }
+                    onViewEvent={() => goToEventProfile(item, false)}
+                  />
+                </View>
               );
             }}
             ListEmptyComponent={
@@ -432,27 +421,30 @@ const HomeScreen = () => {
                     None of your crew has jumped on this yet.
                   </Text>
                 }
-                renderItem={({ item }) => (
-                  <TouchableOpacity className="flex-row items-center mb-6">
-                    <Image
-                      source={
-                        item.avatar_url
-                          ? { uri: item.avatar_url }
-                          : require("../assets/profile-pic-1.png")
-                      }
-                      className="w-14 h-14 rounded-full border-2 border-orange-500 mr-4"
-                    />
-                    <View className="flex-1">
-                      <Text className="text-white text-lg font-bold">
-                        {item.username}
-                      </Text>
-                      <Text className="text-gray-400 text-sm">
-                        {item.intent === "GOING" ? "Going 🚀" : "Interested"}
-                      </Text>
-                    </View>
-                    <ChevronRight color="#666" size={20} />
-                  </TouchableOpacity>
-                )}
+                renderItem={({ item }) => {
+                  // 🚨 FIX: Protect friend panel images against empty string urls
+                  const friendAvatar = item.avatar_url && item.avatar_url.trim() !== ""
+                    ? { uri: item.avatar_url }
+                    : require("../assets/profile-pic-1.png");
+
+                  return (
+                    <TouchableOpacity className="flex-row items-center mb-6">
+                      <Image
+                        source={friendAvatar}
+                        className="w-14 h-14 rounded-full border-2 border-orange-500 mr-4"
+                      />
+                      <View className="flex-1">
+                        <Text className="text-white text-lg font-bold">
+                          {item.username}
+                        </Text>
+                        <Text className="text-gray-400 text-sm">
+                          {item.intent === "GOING" ? "Going 🚀" : "Interested"}
+                        </Text>
+                      </View>
+                      <ChevronRight color="#666" size={20} />
+                    </TouchableOpacity>
+                  );
+                }}
               />
             </SafeAreaView>
           </Animated.View>
