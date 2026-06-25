@@ -444,11 +444,13 @@ const EventProfileScreen = () => {
       } = await supabase.auth.getUser();
       if (!user || !eventId) return;
 
-      const { error } = await supabase.from("event_interactions").upsert(
+      // RSVP lives in its own table with a (user_id, event_id) primary key, so
+      // this upsert finally has a real key to conflict on and actually persists.
+      const { error } = await supabase.from("event_rsvps").upsert(
         {
           user_id: user.id,
           event_id: eventId,
-          intent: "GOING",
+          status: "going",
         },
         { onConflict: "user_id,event_id" },
       );

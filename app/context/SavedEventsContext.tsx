@@ -22,11 +22,11 @@ export const SavedEventsProvider = ({
     if (!user) return;
 
     const fetchSavedEvents = async () => {
+      // The wishlist (hearts) now lives in its own idempotent table.
       const { data, error } = await supabase
-        .from("event_interactions")
+        .from("saved_events")
         .select("event_id")
-        .eq("user_id", user.id)
-        .in("intent", ["SAVED", "GOING"]);
+        .eq("user_id", user.id);
 
       if (error) {
         console.error("Error fetching saves:", error);
@@ -56,20 +56,23 @@ export const SavedEventsProvider = ({
     // Background Database Sync
     try {
       if (isCurrentlySaved) {
-        // Remove it
+        // Remove it from the wishlist (delete by composite primary key).
         const { error } = await supabase
-          .from("event_interactions")
+          .from("saved_events")
           .delete()
           .eq("user_id", user.id)
-          .eq("event_id", eventId)
-          .eq("intent", "SAVED");
+          .eq("event_id", eventId);
 
         if (error) throw error;
       } else {
-        // 🔥 FIX: Changed upsert to insert!
+        // Add to wishlist. The PK makes this naturally idempotent — a stray
+        // double-tap can't create duplicate rows.
         const { error } = await supabase
-          .from("event_interactions")
-          .insert({ user_id: user.id, event_id: eventId, intent: "SAVED" });
+          .from("saved_events")
+          .upsert(
+            { user_id: user.id, event_id: eventId },
+            { onConflict: "user_id,event_id" },
+          );
 
         if (error) throw error;
       }

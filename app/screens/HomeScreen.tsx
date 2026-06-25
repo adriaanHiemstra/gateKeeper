@@ -120,18 +120,31 @@ const HomeScreen = () => {
         .map((f: any) => (f.user_id_1 === user?.id ? f.user_id_2 : f.user_id_1))
         .filter(Boolean);
 
-      // 3. How many friends are going to / interested in each event.
+      // 3. How many friends are going to / have saved each event. Count each
+      //    friend once per event even if they both saved and RSVP'd.
       const friendIntentByEvent: Record<string, number> = {};
       if (friendIds.length > 0) {
-        const { data: intents } = await supabase
-          .from("event_interactions")
-          .select("event_id, user_id, intent")
-          .in("user_id", friendIds)
-          .in("intent", ["GOING", "SAVED"]);
-        (intents || []).forEach((row: any) => {
-          if (!row.event_id) return;
-          friendIntentByEvent[row.event_id] =
-            (friendIntentByEvent[row.event_id] || 0) + 1;
+        const [goingRes, savedRes] = await Promise.all([
+          supabase
+            .from("event_rsvps")
+            .select("event_id, user_id")
+            .in("user_id", friendIds),
+          supabase
+            .from("saved_events")
+            .select("event_id, user_id")
+            .in("user_id", friendIds),
+        ]);
+        const friendsPerEvent: Record<string, Set<string>> = {};
+        [...(goingRes.data || []), ...(savedRes.data || [])].forEach(
+          (row: any) => {
+            if (!row.event_id || !row.user_id) return;
+            if (!friendsPerEvent[row.event_id])
+              friendsPerEvent[row.event_id] = new Set();
+            friendsPerEvent[row.event_id].add(row.user_id);
+          },
+        );
+        Object.entries(friendsPerEvent).forEach(([eventId, friends]) => {
+          friendIntentByEvent[eventId] = friends.size;
         });
       }
 
@@ -151,22 +164,31 @@ const HomeScreen = () => {
       const savedCategoryWeights: Record<string, number> = {};
       const savedEventIds = new Set<string>();
       if (user) {
-        const { data: mine } = await supabase
-          .from("event_interactions")
-          .select("event_id, intent, events ( categories )")
-          .eq("user_id", user.id)
-          .in("intent", ["SAVED", "GOING"]);
-        (mine || []).forEach((row: any) => {
-          if (row.event_id) savedEventIds.add(row.event_id);
-          const ev = Array.isArray(row.events) ? row.events[0] : row.events;
-          const cats: string[] = ev?.categories || [];
-          // Actually committing ("GOING") is a stronger taste signal than saving.
-          const weight = row.intent === "GOING" ? 2 : 1;
-          cats.forEach((c) => {
-            const key = String(c).toLowerCase();
-            savedCategoryWeights[key] = (savedCategoryWeights[key] || 0) + weight;
+        const [savedRes, goingRes] = await Promise.all([
+          supabase
+            .from("saved_events")
+            .select("event_id, events ( categories )")
+            .eq("user_id", user.id),
+          supabase
+            .from("event_rsvps")
+            .select("event_id, events ( categories )")
+            .eq("user_id", user.id),
+        ]);
+        const addTaste = (rows: any[], weight: number) => {
+          (rows || []).forEach((row: any) => {
+            if (row.event_id) savedEventIds.add(row.event_id);
+            const ev = Array.isArray(row.events) ? row.events[0] : row.events;
+            const cats: string[] = ev?.categories || [];
+            cats.forEach((c) => {
+              const key = String(c).toLowerCase();
+              savedCategoryWeights[key] =
+                (savedCategoryWeights[key] || 0) + weight;
+            });
           });
-        });
+        };
+        // Actually committing ("going") is a stronger taste signal than saving.
+        addTaste(savedRes.data || [], 1);
+        addTaste(goingRes.data || [], 2);
       }
 
       // --- Rank the events by relevance to this user ---
