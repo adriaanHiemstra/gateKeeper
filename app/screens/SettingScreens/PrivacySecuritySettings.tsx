@@ -155,12 +155,12 @@ const PrivacySecuritySettings = () => {
             onValueChange={setFaceId}
           />
 
-          <OptionRow
+          {/*<OptionRow
             type="link"
             label="Two-Factor Auth"
             icon={<Smartphone color="#FA8900" size={20} />}
             onPress={() => console.log("2FA Flow")}
-          />
+          />*/}
         </ScrollView>
       </SafeAreaView>
       <BottomNav />

@@ -49,7 +49,7 @@ type PostFeedCardProps = {
   attendeesCount: number;
   onOpenSocial: () => void;
   onViewEvent: () => void;
-  onOpenDiscussion: () => void;
+  //onOpenDiscussion: () => void;
 };
 
 const PostFeedCard = ({
@@ -63,7 +63,7 @@ const PostFeedCard = ({
   attendeesCount,
   onOpenSocial,
   onViewEvent,
-  onOpenDiscussion,
+  //onOpenDiscussion,
 }: PostFeedCardProps) => {
   const [isFullScreen, setIsFullScreen] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
@@ -228,12 +228,12 @@ const PostFeedCard = ({
                 />
               </TouchableOpacity>
 
-              <TouchableOpacity
+              {/* <TouchableOpacity
                 className="bg-white/10 p-3 rounded-full backdrop-blur-md"
                 onPress={onOpenDiscussion}
               >
                 <MessageCircle color="white" size={22} />
-              </TouchableOpacity>
+              </TouchableOpacity> */}
             </View>
           </View>
 

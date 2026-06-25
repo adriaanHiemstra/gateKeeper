@@ -266,12 +266,12 @@ const fetchFeed = async () => {
                       openPanel([], eventObj?.title || "Event")
                     }
                     onViewEvent={() => goToEventProfile(item, true)}
-                    onOpenDiscussion={() =>
+                    /*onOpenDiscussion={() =>
                       navigation.navigate("EventCommunity", {
                         eventId: item.event_id,
                         eventTitle: eventObj?.title || "Event",
                       })
-                    }
+                    }*/
                   />
                 );
               }

@@ -49,7 +49,6 @@ const HostSecuritySettings = () => {
                 <Shield color="#4ade80" size={48} />
              </View>
              <Text className="text-white font-bold text-xl">Account Protected</Text>
-             <Text className="text-gray-400 text-sm">Your security score is 98%</Text>
           </View>
 
           <Text className="text-gray-500 font-bold text-xs uppercase mb-3 ml-2">Login Methods</Text>
@@ -57,7 +56,7 @@ const HostSecuritySettings = () => {
           <SecurityItem 
             label="Change Password" 
             icon={<Key color="white" size={20} />} 
-            onPress={() => console.log('Change PW')} 
+            onPress={() => navigation.navigate('ChangePassword' as never)}
           />
 
           <View className="flex-row items-center justify-between p-4 bg-white/5 border border-white/10 rounded-2xl mb-3">
@@ -75,13 +74,13 @@ const HostSecuritySettings = () => {
             />
           </View>
 
-          <Text className="text-gray-500 font-bold text-xs uppercase mb-3 ml-2 mt-4">Device Management</Text>
+          {/*<Text className="text-gray-500 font-bold text-xs uppercase mb-3 ml-2 mt-4">Device Management</Text>*/}
 
-          <SecurityItem 
+          {/*<SecurityItem 
             label="Two-Factor Auth" 
             icon={<Smartphone color="white" size={20} />} 
             onPress={() => console.log('2FA')} 
-          />
+          />*/}
 
           <TouchableOpacity className="mt-4 self-center">
              <Text className="text-red-500 font-bold">Sign out of all other devices</Text>
