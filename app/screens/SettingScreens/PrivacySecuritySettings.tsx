@@ -148,12 +148,12 @@ const PrivacySecuritySettings = () => {
             onPress={() => navigation.navigate("ChangePassword")} // Links to the screen we built
           />
 
-          <OptionRow
+          {/*<OptionRow
             label="FaceID / Biometrics"
             icon={<Shield color="#FA8900" size={20} />}
             value={faceId}
             onValueChange={setFaceId}
-          />
+          />*/}
 
           {/*<OptionRow
             type="link"

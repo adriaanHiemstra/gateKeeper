@@ -374,7 +374,7 @@ const fetchAnalytics = async () => {
               <View className="flex-row justify-between items-center mb-2">
                 <Text className="text-gray-400 text-sm">Revenue over time</Text>
                 <View className="flex-row bg-white/10 rounded-lg p-1">
-                  {["week", "month"].map((t) => (
+                  {["week"].map((t) => (
                     <TouchableOpacity
                       key={t}
                       onPress={() => setTimeRange(t as any)}

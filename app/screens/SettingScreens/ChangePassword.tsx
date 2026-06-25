@@ -21,10 +21,45 @@ import TopBanner from "../../components/TopBanner";
 import BottomNav from "../../components/BottomNav";
 
 // Backend
-import { supabase } from "../../lib/supabase"; // 🚨 Make sure this path is correct for your project
+import { supabase } from "../../lib/supabase";
 
 // Styles
 import { bannerGradient, fireGradient } from "../../styles/colours";
+
+// 🚨 FIX: Moved PasswordInput OUTSIDE the main component so it doesn't remount on every keystroke
+const PasswordInput = ({
+  label,
+  value,
+  onChange,
+  show,
+  toggleShow,
+  placeholder,
+}: any) => (
+  <View className="mb-6">
+    <Text className="text-gray-400 text-xs font-bold mb-2 ml-1 uppercase tracking-wider">
+      {label}
+    </Text>
+    <View className="flex-row items-center bg-white/10 border border-white/20 rounded-xl px-4 h-14">
+      <Lock color="white" size={20} className="mr-3 opacity-70" />
+      <TextInput
+        value={value}
+        onChangeText={onChange}
+        placeholder={placeholder}
+        placeholderTextColor="#666"
+        secureTextEntry={!show}
+        className="flex-1 text-white text-lg font-medium h-full"
+        style={{ fontFamily: "Jost-Medium" }}
+      />
+      <TouchableOpacity onPress={toggleShow} className="p-2">
+        {show ? (
+          <EyeOff color="#999" size={20} />
+        ) : (
+          <Eye color="#999" size={20} />
+        )}
+      </TouchableOpacity>
+    </View>
+  </View>
+);
 
 const ChangePassword = () => {
   const navigation = useNavigation();
@@ -92,40 +127,6 @@ const ChangePassword = () => {
       setLoading(false);
     }
   };
-
-  const PasswordInput = ({
-    label,
-    value,
-    onChange,
-    show,
-    toggleShow,
-    placeholder,
-  }: any) => (
-    <View className="mb-6">
-      <Text className="text-gray-400 text-xs font-bold mb-2 ml-1 uppercase tracking-wider">
-        {label}
-      </Text>
-      <View className="flex-row items-center bg-white/10 border border-white/20 rounded-xl px-4 h-14">
-        <Lock color="white" size={20} className="mr-3 opacity-70" />
-        <TextInput
-          value={value}
-          onChangeText={onChange}
-          placeholder={placeholder}
-          placeholderTextColor="#666"
-          secureTextEntry={!show}
-          className="flex-1 text-white text-lg font-medium h-full"
-          style={{ fontFamily: "Jost-Medium" }}
-        />
-        <TouchableOpacity onPress={toggleShow} className="p-2">
-          {show ? (
-            <EyeOff color="#999" size={20} />
-          ) : (
-            <Eye color="#999" size={20} />
-          )}
-        </TouchableOpacity>
-      </View>
-    </View>
-  );
 
   return (
     <View className="flex-1 bg-[#121212]">
