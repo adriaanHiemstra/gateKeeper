@@ -35,6 +35,7 @@ import {
 } from "lucide-react-native";
 import { useNavigation } from "@react-navigation/native";
 import { CalendarList } from "react-native-calendars";
+import { trackEventInteraction } from "../lib/interactions";
 import * as Haptics from "expo-haptics";
 
 // Components & Config
@@ -493,7 +494,11 @@ const SearchScreen = () => {
         activeOpacity={0.9}
         className="bg-black relative mb-1"
         style={{ width: ITEM_WIDTH, height: ITEM_WIDTH * 1.25 }}
-        onPress={() => setSelectedEvent(item)}
+        onPress={() => {
+          setSelectedEvent(item);
+          // 🔥 THE SPY TRACKER: Silently log the click!
+          trackEventInteraction(item.id, "CLICKED");
+        }}
       >
         <Image
           source={

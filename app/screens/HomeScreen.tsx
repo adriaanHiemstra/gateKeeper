@@ -24,19 +24,13 @@ import { X, ChevronRight } from "lucide-react-native";
 import { useNavigation, useFocusEffect } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 
-// Backend
 import { supabase } from "../lib/supabase";
-
-// Types
 import { RootStackParamList } from "../types/types";
 
-// Components
 import EventFeedCard from "../components/EventFeedCard";
 import PostFeedCard from "../components/PostFeedCard";
 import BottomNav from "../components/BottomNav";
 import TopBanner from "../components/TopBanner";
-
-// Styles
 import { bannerGradient } from "../styles/colours";
 
 const { width } = Dimensions.get("window");
@@ -48,21 +42,30 @@ const HomeScreen = () => {
   const navigation =
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
 
+  // 🔥 PAGINATION STATE
   const [feedData, setFeedData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [page, setPage] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
 
+  // Panel State
   const [isPanelOpen, setIsPanelOpen] = useState(false);
   const [selectedFriends, setSelectedFriends] = useState<any[]>([]);
   const [selectedEventTitle, setSelectedEventTitle] = useState("");
 
   useFocusEffect(
     useCallback(() => {
-      fetchFeed();
+      // Whenever the screen is focused (e.g., coming from another tab), refresh from the top
+      fetchFeed(0);
     }, []),
   );
 
 const fetchFeed = async () => {
     try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       const today = new Date().toISOString();
       const todayNow = new Date();
 
@@ -97,14 +100,15 @@ const fetchFeed = async () => {
         `,
         )
         .order("created_at", { ascending: false })
-        .limit(20);
+        .range(postOffset, postOffset + POST_LIMIT - 1);
 
-      // 3. Format & Merge
-      const formattedEvents = (eventsData || []).map((e) => ({
-        ...e,
-        type: "event",
-        sortTime: new Date(e.created_at).getTime(),
-      }));
+      // --- 4. END OF FEED CHECK ---
+      if (
+        eventsData.length === 0 &&
+        (!updatesData || updatesData.length === 0)
+      ) {
+        setHasMore(false);
+      }
 
       const formattedUpdates = (updatesData || [])
         .filter((u) => {
@@ -120,23 +124,48 @@ const fetchFeed = async () => {
           sortTime: new Date(u.created_at).getTime(),
         }));
 
-      // 4. Combine and Sort
-      const combined = [...formattedEvents, ...formattedUpdates].sort(
-        (a, b) => b.sortTime - a.sortTime,
-      );
+      // --- 5. THE INTERLEAVE STRATEGY (For this specific chunk) ---
+      const newBatch: any[] = [];
+      let eventIdx = 0;
+      let postIdx = 0;
 
-      setFeedData(combined);
+      while (
+        eventIdx < formattedEvents.length ||
+        postIdx < formattedUpdates.length
+      ) {
+        if (postIdx < formattedUpdates.length) {
+          newBatch.push(formattedUpdates[postIdx]);
+          postIdx++;
+        }
+        if (eventIdx < formattedEvents.length) {
+          newBatch.push(formattedEvents[eventIdx]);
+          eventIdx++;
+        }
+        if (eventIdx < formattedEvents.length) {
+          newBatch.push(formattedEvents[eventIdx]);
+          eventIdx++;
+        }
+      }
+
+      // --- 6. GLUE TO FEED ---
+      if (pageIndex === 0) {
+        setFeedData(newBatch);
+      } else {
+        setFeedData((prev) => [...prev, ...newBatch]);
+      }
+
+      setPage(pageIndex);
     } catch (error: any) {
       console.log("Fetch Error:", error.message);
     } finally {
       setLoading(false);
+      setLoadingMore(false);
     }
   };
 
   // --- NAVIGATION HELPER ---
   const goToEventProfile = (data: any, isPartial: boolean = false) => {
     if (isPartial) {
-      // Logic for POSTS
       navigation.navigate("EventProfile", {
         eventId: data.event_id || data.id,
         eventName: data.events?.title || "Loading...",
@@ -145,7 +174,6 @@ const fetchFeed = async () => {
         banner: require("../assets/event-placeholder.png"),
       });
     } else {
-      // Logic for EVENT CARDS
       navigation.navigate("EventProfile", {
         eventId: data.id,
         eventName: data.title,
@@ -161,7 +189,7 @@ const fetchFeed = async () => {
         location: data.location_text,
         description: data.description,
         ticketUrl: data.ticket_url,
-        tags: data.tags || [],
+        tags: data.categories || data.tags || [],
         ticket_tiers: data.ticket_tiers || [],
       });
     }
@@ -199,9 +227,8 @@ const fetchFeed = async () => {
 
   const panelTranslateX = useSharedValue(width);
 
-  // Find this function in HomeScreen.tsx and replace it:
   const openPanel = (friendsData: any[], title: string) => {
-    setSelectedFriends(friendsData); // <--- Set the real friends!
+    setSelectedFriends(friendsData);
     setSelectedEventTitle(title);
     setIsPanelOpen(true);
     panelTranslateX.value = withTiming(width - PANEL_WIDTH, {
@@ -232,7 +259,7 @@ const fetchFeed = async () => {
         ) : (
           <Animated.FlatList
             data={feedData}
-            keyExtractor={(item) => item.id + item.type}
+            keyExtractor={(item, index) => item.id + item.type + index}
             contentContainerStyle={{ paddingTop: 100, paddingBottom: 100 }}
             onScroll={scrollHandler}
             scrollEventThrottle={16}
@@ -241,8 +268,19 @@ const fetchFeed = async () => {
             snapToAlignment="start"
             decelerationRate="fast"
             disableIntervalMomentum={true}
+            // 🔥 PAGINATION TRIGGERS HERE
+            onEndReached={() => {
+              if (hasMore) fetchFeed(page + 1);
+            }}
+            onEndReachedThreshold={0.5} // Trigger when 50% through the last card
+            ListFooterComponent={
+              loadingMore ? (
+                <View className="py-10 items-center justify-center">
+                  <ActivityIndicator size="large" color="#FA8900" />
+                </View>
+              ) : null
+            }
             renderItem={({ item }) => {
-              // --- A. RENDER POST CARD ---
               if (item.type === "post") {
                 // Safely extract the nested event and profile data
                 const eventObj = Array.isArray(item.events) ? item.events[0] : item.events;

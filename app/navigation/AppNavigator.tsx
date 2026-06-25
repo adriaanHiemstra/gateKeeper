@@ -72,7 +72,7 @@ const Stack = createNativeStackNavigator<RootStackParamList>();
 export default function AppNavigator() {
   return (
     <Stack.Navigator
-      initialRouteName="Login"
+      initialRouteName="SignUp"
       screenOptions={{ headerShown: false }}
     >
       {/* Main Tabs */}

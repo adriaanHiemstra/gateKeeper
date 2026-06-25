@@ -82,7 +82,7 @@ const WishListScreen = () => {
             id,
             title,
             banner_url,
-            category,
+            categories,
             date
           )
         `,
@@ -217,7 +217,10 @@ const WishListScreen = () => {
             {item.title}
           </Text>
           <Text className="text-orange-500 text-xs font-bold uppercase tracking-wider mt-1">
-            {item.category || "Event"}
+            {/* 🔥 SAFELY PULLING FROM THE CATEGORIES ARRAY */}
+            {item.categories && item.categories.length > 0
+              ? item.categories[0]
+              : "Event"}
           </Text>
         </LinearGradient>
       </TouchableOpacity>

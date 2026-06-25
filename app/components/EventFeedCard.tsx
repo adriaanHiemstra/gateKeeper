@@ -3,7 +3,6 @@ import React, { useState, useCallback, useEffect } from "react";
 import {
   View,
   Text,
-  Image,
   TouchableOpacity,
   Dimensions,
   ImageSourcePropType,
@@ -12,6 +11,7 @@ import {
   StatusBar,
   Pressable,
 } from "react-native";
+import { Image } from "expo-image"; // 👈 Upgraded to Expo Image!
 import { LinearGradient } from "expo-linear-gradient";
 import {
   Users,
@@ -39,15 +39,18 @@ import { fireGradient } from "../styles/colours";
 
 import { useSavedEvent } from "../hooks/useSavedEvent";
 import { useEventFriends } from "../hooks/useEventFriends";
+import { supabase } from "../lib/supabase";
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("screen");
-const CARD_HEIGHT = SCREEN_WIDTH * 1.6;
+
+// 👇 FIX: Cap the height so it never spills off the top/bottom of smaller screens
+const CARD_HEIGHT = Math.min(SCREEN_WIDTH * 1.6, SCREEN_HEIGHT * 0.75);
 
 type EventFeedCardProps = {
   id: string;
   title: string;
-  hostName?: string; // Made optional just in case
-  hostAvatar?: ImageSourcePropType; // Made optional
+  hostName?: string;
+  hostAvatar?: ImageSourcePropType;
   image: any;
   mediaItems?: any[];
   attendeesCount: number;
@@ -61,9 +64,30 @@ type EventFeedCardProps = {
   onOpenDiscussion?: () => void;
 };
 
+// 🔥 THE BULLETPROOF HIGH-RES UPSCALER
 const getSource = (source: any) => {
-  if (typeof source === "string") return { uri: source };
-  return source;
+  let uri = typeof source === "string" ? source : source?.uri;
+
+  if (uri) {
+    // 1. Bandsintown: Swap /thumb/ for /large/
+    uri = uri.replace("/thumb/", "/large/");
+
+    // 2. Drupal CMS: Strip the thumbnail routing
+    uri = uri.replace(/\/styles\/[^/]+\/public\//i, "/");
+
+    // 3. WordPress Hardcoded Thumbnails
+    uri = uri.replace(/-\d+x\d+\.(jpg|jpeg|png|webp)(?:\?.*)?$/i, ".$1");
+
+    // 4. CDNs & Generic Query Params
+    if (uri.match(/[?&]w=\d+/)) {
+      uri = uri.replace(/([?&]w=)\d+/, "$11080");
+    }
+    if (uri.match(/[?&]h=\d+/)) {
+      uri = uri.replace(/([?&]h=)\d+/, "$11080");
+    }
+  }
+
+  return { uri };
 };
 
 const isVideoFile = (source: any) => {
@@ -79,6 +103,33 @@ const isVideoFile = (source: any) => {
   return false;
 };
 
+const GET_CATEGORY_COLOR = (
+  name: string,
+  groupedCategories: Record<string, string[]>,
+) => {
+  if (!name) return "#FA8900";
+
+  let targetGroup = name;
+
+  if (!groupedCategories[name]) {
+    for (const [group, cats] of Object.entries(groupedCategories)) {
+      if (cats.includes(name)) {
+        targetGroup = group;
+        break;
+      }
+    }
+  }
+
+  const g = targetGroup.toLowerCase();
+  if (g.includes("music")) return "#A855F7";
+  if (g.includes("sport")) return "#F43F5E";
+  if (g.includes("active")) return "#F97316";
+  if (g.includes("show")) return "#10B981";
+  if (g.includes("food") || g.includes("restaurant")) return "#3B82F6";
+
+  return "#FA8900";
+};
+
 const EventFeedCard = ({
   id,
   title,
@@ -91,9 +142,13 @@ const EventFeedCard = ({
   onPressHost,
   onViewEvent,
   showSocial = true,
+  tags = [],
   disableTap = false,
 }: EventFeedCardProps) => {
   const [isFullScreen, setIsFullScreen] = useState(false);
+  const [groupedCategories, setGroupedCategories] = useState<
+    Record<string, string[]>
+  >({});
 
   const { isSaved, toggleSave } = useSavedEvent(id);
   const { friends } = useEventFriends(id);
@@ -123,6 +178,32 @@ const EventFeedCard = ({
     };
     enableAudio();
   }, []);
+
+  useEffect(() => {
+    const fetchCategories = async () => {
+      try {
+        const { data } = await supabase
+          .from("categories")
+          .select("name, group_name");
+
+        if (data) {
+          const grouped = data.reduce((acc: Record<string, string[]>, curr) => {
+            const group = curr.group_name || "Other";
+            if (!acc[group]) acc[group] = [];
+            acc[group].push(curr.name);
+            return acc;
+          }, {});
+          setGroupedCategories(grouped);
+        }
+      } catch (err) {
+        console.error("Error fetching categories for EventCard:", err);
+      }
+    };
+
+    if (tags && tags.length > 0) {
+      fetchCategories();
+    }
+  }, [tags]);
 
   const handleLike = () => {
     toggleSave();
@@ -183,7 +264,9 @@ const EventFeedCard = ({
           <Image
             source={source}
             style={{ width: "100%", height: "80%" }}
-            resizeMode="contain"
+            contentFit="contain" // 👈 Updated for expo-image
+            transition={300}
+            cachePolicy="memory-disk"
           />
         )}
       </View>
@@ -193,10 +276,22 @@ const EventFeedCard = ({
   const mainSource = getSource(carouselData[0]);
   const isMainVideo = isVideoFile(carouselData[0]);
 
+  let parsedTags: string[] = [];
+  if (Array.isArray(tags)) {
+    parsedTags = tags;
+  } else if (typeof tags === "string") {
+    try {
+      parsedTags = JSON.parse(tags);
+    } catch {
+      parsedTags = [tags];
+    }
+  }
+
   return (
     <>
       <View
-        className="mb-2 bg-black relative"
+        // 👇 FIX: Added overflow-hidden to stop image bleeding!
+        className="mb-2 bg-black relative overflow-hidden"
         style={{ height: CARD_HEIGHT, width: SCREEN_WIDTH }}
       >
         <Pressable
@@ -215,11 +310,17 @@ const EventFeedCard = ({
           ) : (
             <Image
               source={mainSource}
-              className="w-full h-full absolute"
-              resizeMode="cover"
+              style={{ width: "100%", height: "100%", position: "absolute" }}
+              contentFit="cover" // 👈 Replaced resizeMode
+              transition={300} // Smooth load-in
+              cachePolicy="memory-disk"
             />
           )}
 
+          {/* 👇 The Low-Res Artifact Mask */}
+          <View className="absolute inset-0 bg-black/20" pointerEvents="none" />
+
+          {/* 👇 Heart Animation (Cleaned up duplicates) */}
           <View className="absolute inset-0 justify-center items-center pointer-events-none">
             <Animated.View style={heartStyle}>
               <Heart color="#FA8900" size={150} fill="#FA8900" />
@@ -238,6 +339,31 @@ const EventFeedCard = ({
           pointerEvents="box-none"
         >
           <View>
+            {parsedTags.length > 0 && (
+              <View className="flex-row flex-wrap gap-2 mb-3">
+                {parsedTags.map((tag: string, i: number) => {
+                  const color = GET_CATEGORY_COLOR(tag, groupedCategories);
+                  return (
+                    <View
+                      key={i}
+                      style={{
+                        backgroundColor: `${color}30`,
+                        borderColor: `${color}80`,
+                      }}
+                      className="px-2 py-0.5 rounded-md border"
+                    >
+                      <Text
+                        style={{ color: color }}
+                        className="text-[10px] font-bold uppercase tracking-wider shadow-sm shadow-black"
+                      >
+                        {tag}
+                      </Text>
+                    </View>
+                  );
+                })}
+              </View>
+            )}
+
             <Text
               className="text-white text-4xl font-bold mb-3 leading-tight shadow-black"
               style={{ fontFamily: "Jost-Medium" }}
@@ -247,15 +373,18 @@ const EventFeedCard = ({
           </View>
 
           <View className="flex-row items-center justify-between mb-6">
-            {/* 👇 FIXED: Safely check if hostName exists instead of event object */}
-            {hostName && hostName.trim() !== "" && hostAvatar && (
+            {/* Host pill dynamically shown/hidden based on DB data */}
+            {/*hostName && hostName.trim() !== "" && hostAvatar && (
               <TouchableOpacity
                 onPress={onPressHost}
                 className="flex-row items-center"
               >
                 <Image
                   source={hostAvatar}
-                  className="w-10 h-10 rounded-full border-2 border-orange-500 mr-3"
+                  style={{ width: 40, height: 40, borderRadius: 20 }}
+                  className="border-2 border-orange-500 mr-3"
+                  contentFit="cover"
+                  cachePolicy="memory-disk"
                 />
                 <View>
                   <Text className="text-gray-300 text-xs font-bold uppercase tracking-wider">
@@ -269,9 +398,8 @@ const EventFeedCard = ({
                   </Text>
                 </View>
               </TouchableOpacity>
-            )}
+            )*/}
 
-            {/* If there is no host, we can use flex-end to keep the heart button aligned to the right */}
             <View className="flex-1 items-end">
               <TouchableOpacity
                 onPress={handleLike}
@@ -325,8 +453,15 @@ const EventFeedCard = ({
                           ? { uri: friend.avatar_url }
                           : require("../assets/profile-pic-1.png")
                       }
-                      className="w-8 h-8 rounded-full border-2 border-[#121212]"
-                      style={{ marginLeft: i > 0 ? -12 : 0 }}
+                      style={{
+                        width: 32,
+                        height: 32,
+                        borderRadius: 16,
+                        marginLeft: i > 0 ? -12 : 0,
+                      }}
+                      className="border-2 border-[#121212]"
+                      contentFit="cover"
+                      cachePolicy="memory-disk"
                     />
                   ))}
                 </View>

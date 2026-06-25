@@ -12,33 +12,34 @@ import {
   Animated,
   Alert,
   ActivityIndicator,
+  Image, // <-- NEW IMPORT
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import {
   ArrowRight,
   MapPin,
-  Edit3,
   User,
   Check,
   Phone,
   Users,
   CheckCircle2,
   Circle,
+  Camera, // <-- NEW IMPORT
 } from "lucide-react-native";
 import { useNavigation } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import * as Haptics from "expo-haptics";
 import * as Contacts from "expo-contacts";
+import * as ImagePicker from "expo-image-picker"; // <-- NEW IMPORT
+import { decode } from "base64-arraybuffer"; // <-- NEW IMPORT
 
 // Backend
-import { supabase } from "../lib/supabase"; // <--- ADD THIS RIGHT HERE!
+import { supabase } from "../lib/supabase";
 
 // Styles
 import { bannerGradient, fireGradient } from "../styles/colours";
 import { RootStackParamList } from "../types/types";
-
-// ... rest of the file
 
 // --- CONSTANTS ---
 const AVATAR_COLORS = [
@@ -49,50 +50,14 @@ const AVATAR_COLORS = [
   "#FFB533",
   "#00E5FF",
 ];
-const CATEGORIES = [
-  "Acoustic",
-  "Activities",
-  "Afrobeats",
-  "Amapiano",
-  "Art",
-  "Beach",
-  "Cinema",
-  "Comedy",
-  "Crafts",
-  "Cricket",
-  "Date Night",
-  "DnB",
-  "Electronic",
-  "Festivals",
-  "Food Market",
-  "Gaming",
-  "Hikes",
-  "Hiking",
-  "Hip Hop",
-  "House",
-  "Jazz",
-  "Live Music",
-  "Magic",
-  "Markets",
-  "Music",
-  "Nightlife",
-  "Outdoors",
-  "Psytrance",
-  "Quiz",
-  "Rock",
-  "Rugby",
-  "Running",
-  "Shows",
-  "Soccer",
-  "Sports",
-  "Surfing",
-  "Techno",
-  "Tennis",
-  "Theatre",
-  "Thrift",
-  "Workshops",
-  "Yoga",
-];
+
+// --- HELPERS ---
+const validateSAPhoneNumber = (phone: string) => {
+  const cleaned = phone.replace(/[^\d+]/g, "");
+  const isLocal = /^0[6-8][0-9]{8}$/.test(cleaned);
+  const isIntl = /^(?:\+27|27)[6-8][0-9]{8}$/.test(cleaned);
+  return isLocal || isIntl;
+};
 
 // --- TYPES ---
 type MatchedContact = {
@@ -101,6 +66,11 @@ type MatchedContact = {
   username: string;
   avatarColor: string;
   isSelected: boolean;
+};
+
+type Category = {
+  id: string;
+  name: string;
 };
 
 // --- CUSTOM ANIMATED COMPONENT ---
@@ -174,9 +144,16 @@ const Onboarding = () => {
   const [bio, setBio] = useState("");
   const [location, setLocation] = useState("");
   const [avatarColor, setAvatarColor] = useState("");
+  // 🔥 NEW STATE FOR IMAGE
+  const [profileImage, setProfileImage] = useState<{
+    uri: string;
+    base64: string;
+    ext: string;
+  } | null>(null);
 
   // Screen 2: Vibe Check State
-  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [dbCategories, setDbCategories] = useState<Category[]>([]);
+  const [selectedTags, setSelectedTags] = useState<Category[]>([]);
 
   // Screen 3 & 4: Contacts State
   const [phoneNumber, setPhoneNumber] = useState("");
@@ -186,15 +163,53 @@ const Onboarding = () => {
     setAvatarColor(
       AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)],
     );
+
+    const fetchCategories = async () => {
+      const { data, error } = await supabase
+        .from("categories")
+        .select("id, name")
+        .order("name", { ascending: true });
+
+      if (error) {
+        console.error("Error fetching categories:", error);
+      } else if (data) {
+        setDbCategories(data);
+      }
+    };
+
+    fetchCategories();
   }, []);
 
   // --- ACTIONS ---
-  const toggleTag = (tag: string) => {
-    if (selectedTags.includes(tag)) {
-      setSelectedTags(selectedTags.filter((t) => t !== tag));
+
+  // 🔥 NEW IMAGE PICKER LOGIC
+  const pickImage = async () => {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images"],
+      allowsEditing: true,
+      aspect: [1, 1], // Forces a square crop for avatars
+      quality: 0.5, // Compresses the image slightly for faster uploads
+      base64: true, // Required for Supabase RN upload
+    });
+
+    if (!result.canceled && result.assets[0].base64) {
+      const asset = result.assets[0];
+      const ext = asset.uri.split(".").pop() || "jpeg";
+      setProfileImage({
+        uri: asset.uri,
+        base64: asset.base64,
+        ext,
+      });
+    }
+  };
+
+  const toggleTag = (cat: Category) => {
+    const isSelected = selectedTags.some((t) => t.id === cat.id);
+    if (isSelected) {
+      setSelectedTags(selectedTags.filter((t) => t.id !== cat.id));
     } else {
-      if (selectedTags.length >= 5) return;
-      setSelectedTags([...selectedTags, tag]);
+      if (selectedTags.length >= 10) return;
+      setSelectedTags([...selectedTags, cat]);
     }
   };
 
@@ -214,9 +229,13 @@ const Onboarding = () => {
     else if (step === 2) setStep(3);
   };
 
-  // --- THE CREW SYNC LOGIC (WITH SA NORMALIZER!) ---
   const handleSyncContacts = async (skipSync: boolean = false) => {
-    if (!phoneNumber && !skipSync) {
+    if (skipSync) {
+      finishOnboarding();
+      return;
+    }
+
+    if (!phoneNumber) {
       Alert.alert(
         "Hold up",
         "Please enter your own phone number so your friends can find you!",
@@ -224,8 +243,11 @@ const Onboarding = () => {
       return;
     }
 
-    if (skipSync) {
-      finishOnboarding();
+    if (!validateSAPhoneNumber(phoneNumber)) {
+      Alert.alert(
+        "Invalid Number",
+        "Please enter a valid South African phone number (e.g., 082 123 4567).",
+      );
       return;
     }
 
@@ -239,58 +261,40 @@ const Onboarding = () => {
           fields: [Contacts.Fields.PhoneNumbers],
         });
 
-        // 1. Extract, clean, and NORMALIZE the numbers for South Africa
         const cleanedContacts = data
           .flatMap((c) =>
             c.phoneNumbers ? c.phoneNumbers.map((p) => p.number) : [],
           )
           .filter(Boolean)
-          .map((num) => num?.replace(/\D/g, "")) // Strip spaces and symbols
+          .map((num) => num?.replace(/\D/g, ""))
           .flatMap((num) => {
             if (!num) return [];
-
-            // If it's a +27 number, generate both the 27 and 0 versions
             if (num.startsWith("27") && num.length === 11) {
               return [num, "0" + num.substring(2)];
-            }
-            // If it's a local 0 number, generate both the 0 and 27 versions
-            else if (num.startsWith("0") && num.length === 10) {
+            } else if (num.startsWith("0") && num.length === 10) {
               return [num, "27" + num.substring(1)];
             }
-
-            // Otherwise, just return the number as-is
             return [num];
           });
 
-        // Remove duplicates just in case
         const uniqueContacts = Array.from(new Set(cleanedContacts));
 
-        // 🔥 LOUD LOG: It should say "NORMALIZED" now!
-        console.log("📱 NORMALIZED CONTACTS:", uniqueContacts.slice(0, 10));
-
-        // 2. Call our massive Database function
         const { data: dbMatches, error } = await supabase.rpc(
           "match_contacts",
           {
-            phone_array: uniqueContacts, // <-- Now sending BOTH versions of every number
+            phone_array: uniqueContacts,
           },
         );
 
-        if (error) {
-          console.error("❌ SUPABASE RPC ERROR:", error.message);
-          throw error;
-        }
+        if (error) throw error;
 
-        console.log("✅ DB MATCHES FOUND:", dbMatches);
-
-        // 3. Format the data for our UI Checklist
         if (dbMatches && dbMatches.length > 0) {
           const formattedMatches = dbMatches.map((match: any) => ({
             id: match.id,
             phoneName: match.full_name || "Mystery Friend",
             username: match.username || "@new_user",
             avatarColor: match.avatar_color || "#FA8900",
-            isSelected: true, // Default to checked!
+            isSelected: true,
           }));
 
           setMatchedContacts(formattedMatches);
@@ -317,21 +321,90 @@ const Onboarding = () => {
     }
   };
 
-  const finishOnboarding = () => {
-    const finalFriendsToSync = matchedContacts
-      .filter((c) => c.isSelected)
-      .map((c) => c.id);
+  const finishOnboarding = async () => {
+    setIsFinishing(true);
 
-    console.log("🚀 FINAL PAYLOAD READY FOR SUPABASE:", {
-      profile: { bio, location, avatarColor, phoneNumber },
-      interests: selectedTags,
-      friendsToAdd: finalFriendsToSync,
-    });
+    try {
+      const {
+        data: { user },
+        error: authError,
+      } = await supabase.auth.getUser();
 
-    navigation.replace("Home");
+      if (authError || !user) {
+        throw new Error("Could not find authenticated user.");
+      }
+
+      let finalAvatarUrl = null;
+
+      // 🔥 IMAGE UPLOAD LOGIC
+      if (profileImage) {
+        const fileName = `${user.id}-${Date.now()}.${profileImage.ext}`;
+        const filePath = `public/${fileName}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from("profile-pics")
+          .upload(filePath, decode(profileImage.base64), {
+            contentType: `image/${profileImage.ext}`,
+            upsert: true,
+          });
+
+        if (uploadError) {
+          console.error("Storage upload error:", uploadError);
+        } else {
+          // Get the public URL to save in the profiles table
+          const { data } = supabase.storage
+            .from("profile-pics")
+            .getPublicUrl(filePath);
+          finalAvatarUrl = data.publicUrl;
+        }
+      }
+
+      // Update Profile
+      const { error: profileError } = await supabase
+        .from("profiles")
+        .update({
+          bio: bio || null,
+          location: location || null,
+          avatar_color: avatarColor,
+          avatar_url: finalAvatarUrl, // <-- SAVE THE URL
+          phone_number: phoneNumber || null,
+          interests: selectedTags.map((t) => t.name),
+        })
+        .eq("id", user.id);
+
+      if (profileError) throw profileError;
+
+      // Update Interests
+      if (selectedTags.length > 0) {
+        const interestInserts = selectedTags.map((tag) => ({
+          user_id: user.id,
+          category_id: tag.id,
+        }));
+        await supabase.from("user_interests").upsert(interestInserts);
+      }
+
+      // Update Friendships
+      const finalFriendsToSync = matchedContacts
+        .filter((c) => c.isSelected)
+        .map((c) => c.id);
+
+      if (finalFriendsToSync.length > 0) {
+        const friendshipInserts = finalFriendsToSync.map((friendId) => ({
+          user_id_1: user.id,
+          user_id_2: friendId,
+        }));
+        await supabase.from("friendships").insert(friendshipInserts);
+      }
+
+      navigation.replace("Home");
+    } catch (error: any) {
+      console.error("Error saving profile:", error.message);
+      Alert.alert("Error", "We couldn't save your profile. Please try again.");
+    } finally {
+      setIsFinishing(false);
+    }
   };
 
-  // Calculate how many friends are currently checked
   const selectedCount = matchedContacts.filter((c) => c.isSelected).length;
 
   return (
@@ -347,7 +420,6 @@ const Onboarding = () => {
             contentContainerStyle={{ flexGrow: 1, padding: 24 }}
             showsVerticalScrollIndicator={false}
           >
-            {/* PROGRESS BAR (Only show on steps 1-3) */}
             {step < 4 && (
               <View className="flex-row gap-2 mb-8 mt-4 justify-center">
                 <View className="h-2 flex-1 rounded-full bg-orange-500" />
@@ -366,7 +438,7 @@ const Onboarding = () => {
             {step === 1 && (
               <View className="flex-1 justify-center">
                 <Text
-                  className="text-white text-4xl font-bold mb-2"
+                  className="text-white text-4xl font-bold "
                   style={{ fontFamily: "Jost-Medium" }}
                 >
                   Set your vibe.
@@ -376,30 +448,49 @@ const Onboarding = () => {
                 </Text>
 
                 <View className="items-center mb-8">
-                  <View
-                    className="w-32 h-32 rounded-full items-center justify-center border-4 border-[#121212] shadow-2xl"
-                    style={{ backgroundColor: avatarColor }}
+                  {/* 🔥 UPDATED AVATAR CIRCLE */}
+                  <TouchableOpacity
+                    onPress={pickImage}
+                    activeOpacity={0.8}
+                    className="w-32 h-32 rounded-full items-center justify-center border-4 border-[#121212] shadow-2xl overflow-hidden relative"
+                    style={{
+                      backgroundColor: profileImage
+                        ? "transparent"
+                        : avatarColor,
+                    }}
                   >
-                    <User color="white" size={48} opacity={0.8} />
-                  </View>
-                  <TouchableOpacity className="mt-4 bg-white/10 px-4 py-2 rounded-full border border-white/10">
+                    {profileImage ? (
+                      <Image
+                        source={{ uri: profileImage.uri }}
+                        className="w-full h-full"
+                        resizeMode="cover"
+                      />
+                    ) : (
+                      <User color="white" size={48} opacity={0.8} />
+                    )}
+
+                    {/* Camera Overlay Icon */}
+                    <View className="absolute bottom-2 right-2 bg-black/60 p-2 rounded-full">
+                      <Camera color="white" size={16} />
+                    </View>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    onPress={pickImage}
+                    className="mt-4 bg-white/10 px-4 py-2 rounded-full border border-white/10"
+                  >
                     <Text className="text-white font-bold text-sm">
-                      Add Photo (Later)
+                      {profileImage ? "Change Photo" : "Add Photo"}
                     </Text>
                   </TouchableOpacity>
                 </View>
 
                 {/* BIO INPUT */}
-                <View className="mb-6">
-                  <Text className="text-gray-400 text-xs font-bold uppercase mb-2 ml-1">
+                <View className="mb-6 p-0">
+                  <Text className="text-gray-400 text-xs font-bold uppercase mb-1 ml-1">
                     Short Bio
                   </Text>
                   <View className="flex-row bg-white/10 border border-white/20 rounded-2xl px-4 pt-4 pb-2 min-h-[100px]">
-                    <Edit3
-                      color="white"
-                      size={20}
-                      className="mr-3 mt-1 opacity-70"
-                    />
                     <TextInput
                       placeholder="I love techno and long hikes..."
                       placeholderTextColor="#666"
@@ -407,7 +498,7 @@ const Onboarding = () => {
                       onChangeText={setBio}
                       multiline
                       maxLength={150}
-                      className="flex-1 text-white text-lg font-medium ml-2"
+                      className="flex-1 text-white text-lg font-medium ml-2 "
                       style={{
                         fontFamily: "Jost-Medium",
                         textAlignVertical: "top",
@@ -452,16 +543,16 @@ const Onboarding = () => {
                   What's your scene?
                 </Text>
                 <Text className="text-gray-400 text-lg mb-8">
-                  Pick up to 5 things you're into. We'll curate your feed.
+                  Pick up to 10 things you're into. We'll curate your feed.
                 </Text>
 
                 <View className="flex-row flex-wrap justify-start">
-                  {CATEGORIES.map((tag, index) => (
+                  {dbCategories.map((cat) => (
                     <AnimatedTag
-                      key={index}
-                      label={tag}
-                      isSelected={selectedTags.includes(tag)}
-                      onPress={() => toggleTag(tag)}
+                      key={cat.id}
+                      label={cat.name}
+                      isSelected={selectedTags.some((t) => t.id === cat.id)}
+                      onPress={() => toggleTag(cat)}
                     />
                   ))}
                 </View>
@@ -540,7 +631,6 @@ const Onboarding = () => {
                       onPress={() => toggleContact(contact.id)}
                       className={`flex-row items-center p-4 ${index !== matchedContacts.length - 1 ? "border-b border-white/5" : ""}`}
                     >
-                      {/* Random Colored Avatar for Friend */}
                       <View
                         className="w-12 h-12 rounded-full items-center justify-center mr-4"
                         style={{ backgroundColor: contact.avatarColor }}
@@ -548,7 +638,6 @@ const Onboarding = () => {
                         <User color="white" size={20} opacity={0.8} />
                       </View>
 
-                      {/* Name & Username */}
                       <View className="flex-1">
                         <Text
                           className="text-white text-lg font-bold"
@@ -561,7 +650,6 @@ const Onboarding = () => {
                         </Text>
                       </View>
 
-                      {/* Custom Checkbox */}
                       <View className="ml-2">
                         {contact.isSelected ? (
                           <CheckCircle2 color="#FA8900" size={28} />
@@ -600,7 +688,6 @@ const Onboarding = () => {
                 </TouchableOpacity>
               ) : step === 3 ? (
                 <>
-                  {/* SYNC BUTTON */}
                   <TouchableOpacity
                     onPress={() => handleSyncContacts(false)}
                     activeOpacity={0.9}
@@ -623,8 +710,6 @@ const Onboarding = () => {
                       )}
                     </LinearGradient>
                   </TouchableOpacity>
-
-                  {/* SKIP BUTTON */}
                   <TouchableOpacity
                     onPress={() => handleSyncContacts(true)}
                     disabled={isFinishing}
@@ -639,7 +724,6 @@ const Onboarding = () => {
                   </TouchableOpacity>
                 </>
               ) : (
-                // STEP 4 FINISH BUTTON
                 <TouchableOpacity
                   onPress={finishOnboarding}
                   activeOpacity={0.9}

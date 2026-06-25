@@ -15,6 +15,7 @@ type EventType = {
   lng: number;
   categories: string[];
   markerColor?: string;
+  markerIcon?: any;
 };
 
 type VenueType = {
@@ -43,21 +44,48 @@ const EventMap = ({
   const mapRef = useRef<any>(null);
   const [showLabels, setShowLabels] = useState(false);
 
+  // 👇 1. Track the EXACT rectangular aspect ratio of the user's current zoom
+  const [currentZoom, setCurrentZoom] = useState({
+    latitudeDelta: 0.08,
+    longitudeDelta: 0.08,
+  });
+
   useEffect(() => {
     if (selectedEvent) {
-      mapRef.current?.animateToRegion(
-        {
-          latitude: selectedEvent.lat,
-          longitude: selectedEvent.lng,
-          latitudeDelta: 0.02,
-          longitudeDelta: 0.02,
-        },
-        500,
-      );
+      // 👇 2. SMART PANNING
+      if (currentZoom.latitudeDelta > 0.02) {
+        // If they are far away, zoom them in!
+        mapRef.current?.animateToRegion(
+          {
+            latitude: selectedEvent.lat,
+            longitude: selectedEvent.lng,
+            latitudeDelta: 0.02,
+            longitudeDelta: 0.02,
+          },
+          500,
+        );
+      } else {
+        // If they are already zoomed in, KEEP their exact zoom and just slide the camera!
+        mapRef.current?.animateToRegion(
+          {
+            latitude: selectedEvent.lat,
+            longitude: selectedEvent.lng,
+            latitudeDelta: currentZoom.latitudeDelta,
+            longitudeDelta: currentZoom.longitudeDelta,
+          },
+          500,
+        );
+      }
     }
   }, [selectedEvent]);
 
   const handleRegionChange = (region: Region) => {
+    // 👇 3. Save the exact dimensions every time they stop moving the map
+    setCurrentZoom({
+      latitudeDelta: region.latitudeDelta,
+      longitudeDelta: region.longitudeDelta,
+    });
+
     if (region.latitudeDelta < 0.045) {
       if (!showLabels) setShowLabels(true);
     } else {
@@ -136,9 +164,9 @@ const EventMap = ({
         {events.map((event) => (
           <EventMarker
             key={`event-${event.id}`}
-            // 👇 CRITICAL FIX: Explicitly expose the coordinate to the clustering engine
             coordinate={{ latitude: event.lat, longitude: event.lng }}
             event={event}
+            icon={event.markerIcon} // 👈 ADD THIS PROP
             color={event.markerColor}
             isSelected={selectedEvent?.id === event.id}
             showLabels={selectedEvent?.id === event.id || showLabels}
