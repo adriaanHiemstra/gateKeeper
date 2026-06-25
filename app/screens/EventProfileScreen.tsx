@@ -34,6 +34,7 @@ import {
   X,
   Volume2,
   VolumeX,
+  ChevronRight,
 } from "lucide-react-native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { Video, ResizeMode, Audio } from "expo-av";
@@ -42,6 +43,7 @@ import * as Haptics from "expo-haptics";
 // Components & Backend
 import TopBanner from "../components/TopBanner";
 import { useSavedEvent } from "../hooks/useSavedEvent";
+import { useEventFriends } from "../hooks/useEventFriends";
 import { supabase } from "../lib/supabase";
 
 // Styles
@@ -145,6 +147,10 @@ const EventProfileScreen = () => {
 
   // Initialize the custom hook for saving the event
   const { isSaved, toggleSave } = useSavedEvent(eventId);
+
+  // Which of the user's friends are going to / interested in this event.
+  const { friends } = useEventFriends(eventId);
+  const [showFriends, setShowFriends] = useState(false);
 
   const handleShare = async () => {
     try {
@@ -654,6 +660,48 @@ const EventProfileScreen = () => {
             </View>
           </View>
 
+          {/* FRIENDS GOING */}
+          {friends.length > 0 && (
+            <TouchableOpacity
+              onPress={() => setShowFriends(true)}
+              activeOpacity={0.85}
+              className="mx-6 mb-8 flex-row items-center bg-white/5 border border-white/10 rounded-3xl p-4"
+            >
+              <View className="flex-row mr-4">
+                {friends.slice(0, 4).map((f: any, i: number) => (
+                  <Image
+                    key={f.friend_id || i}
+                    source={
+                      f.avatar_url
+                        ? { uri: f.avatar_url }
+                        : require("../assets/profile-pic-1.png")
+                    }
+                    style={{
+                      width: 40,
+                      height: 40,
+                      borderRadius: 20,
+                      marginLeft: i > 0 ? -14 : 0,
+                    }}
+                    className="border-2 border-[#1E1E1E]"
+                  />
+                ))}
+              </View>
+              <View className="flex-1">
+                <Text
+                  className="text-white font-bold text-base"
+                  style={{ fontFamily: "Jost-Medium" }}
+                >
+                  {friends.length}{" "}
+                  {friends.length === 1 ? "friend is" : "friends are"} interested
+                </Text>
+                <Text className="text-gray-400 text-sm">
+                  Tap to see who's in
+                </Text>
+              </View>
+              <ChevronRight color="#666" size={20} />
+            </TouchableOpacity>
+          )}
+
           {/* DETAILS */}
           <View className="mx-6 bg-white/5 border border-white/10 rounded-3xl p-5 mb-8 gap-5">
             <View className="flex-row items-center">
@@ -740,6 +788,64 @@ const EventProfileScreen = () => {
           </TouchableOpacity>
         </View>
       </SafeAreaView>
+
+      {/* FRIENDS GOING MODAL */}
+      <Modal
+        visible={showFriends}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowFriends(false)}
+      >
+        <View className="flex-1 bg-black/80 justify-end">
+          <View className="bg-[#1E1E1E] rounded-t-3xl p-6 border-t border-white/10 pb-12 max-h-[70%]">
+            <View className="flex-row justify-between items-start mb-6">
+              <View className="flex-1 pr-4">
+                <Text className="text-gray-400 text-xs uppercase font-bold tracking-widest mb-1">
+                  Who's Going?
+                </Text>
+                <Text
+                  className="text-white text-2xl font-bold"
+                  numberOfLines={2}
+                  style={{ fontFamily: "Jost-Medium" }}
+                >
+                  {eventName}
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => setShowFriends(false)}
+                className="bg-white/10 p-2 rounded-full"
+              >
+                <X color="white" size={24} />
+              </TouchableOpacity>
+            </View>
+            <FlatList
+              data={friends}
+              keyExtractor={(item, i) => item.friend_id || String(i)}
+              showsVerticalScrollIndicator={false}
+              renderItem={({ item }: { item: any }) => (
+                <View className="flex-row items-center mb-4">
+                  <Image
+                    source={
+                      item.avatar_url
+                        ? { uri: item.avatar_url }
+                        : require("../assets/profile-pic-1.png")
+                    }
+                    className="w-12 h-12 rounded-full border-2 border-orange-500 mr-4"
+                  />
+                  <View className="flex-1">
+                    <Text className="text-white text-lg font-bold">
+                      {item.username || "Friend"}
+                    </Text>
+                    <Text className="text-gray-400 text-sm">
+                      {item.intent === "GOING" ? "Going 🚀" : "Interested"}
+                    </Text>
+                  </View>
+                </View>
+              )}
+            />
+          </View>
+        </View>
+      </Modal>
 
       <Modal
         visible={showFullGallery}
