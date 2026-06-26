@@ -43,6 +43,14 @@ const MyTicketsScreen = () => {
 
   const fetchTickets = async () => {
     try {
+    // 1. Get the current logged-in user's profile
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        setLoading(false);
+        return;
+      }
+
       const { data, error } = await supabase
         .from("tickets")
         .select(
@@ -63,7 +71,8 @@ const MyTicketsScreen = () => {
             price
           )
         `
-        ) // ✅ Added event_id to selection
+        )
+        .eq("user_id", user.id)
         .order("purchased_at", { ascending: false });
 
       if (error) throw error;
@@ -102,7 +111,7 @@ const MyTicketsScreen = () => {
           navigation.navigate("TicketDisplay", {
             eventId: item.event_id, // ✅ FIX: Added this so the button works
             eventTitle: eventTitle,
-            ticketId: `#${item.qr_code}`,
+            ticketId: `${item.qr_code}`,
             eventImage: imageSource,
             eventLocation: eventLoc,
             eventTime: `${eventDate} • ${eventTime}`,

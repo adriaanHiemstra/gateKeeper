@@ -183,10 +183,9 @@ const handleCheckout = async () => {
                 // Loop through the QUANTITY selected for this tier
                 for (let i = 0; i < tier.quantity; i++) {
                   // Added a random number at the end so loop doesn't create duplicate QR codes in the same millisecond!
-                  const uniqueQrCode = `GK-${validEventId.substring(
-                    0,
-                    4
-                  )}-${Date.now().toString().slice(-6)}-${Math.floor(Math.random() * 1000)}`;
+                  const uniqueQrCode = `GK-${validEventId.substring(0, 4)}-${Date.now().toString().slice(-6)}-${Math.floor(
+                    Math.random() * 1000
+                  )}`.toUpperCase();
 
                   ticketsToInsert.push({
                     event_id: validEventId,
@@ -211,7 +210,7 @@ const handleCheckout = async () => {
               navigation.navigate("TicketDisplay", {
                 eventId: validEventId,
                 eventTitle: eventDetails.name,
-                ticketId: `#${ticketsToInsert[0].qr_code}`, 
+                ticketId: `${ticketsToInsert[0].qr_code}`, 
                 eventImage: eventDetails.banner,
                 eventLocation: eventDetails.location,
                 eventTime: eventDetails.time,

@@ -80,7 +80,11 @@ const ScanTicketsScreen = () => {
 
 // --- 💡 REAL SUPABASE VALIDATION LOGIC ---
   const handleValidateTicket = async (codeToVerify: string) => {
-    const cleanCode = codeToVerify.trim().toUpperCase();
+    let cleanCode = codeToVerify.trim().toUpperCase();
+  
+    if (cleanCode.startsWith('#')) {
+        cleanCode = cleanCode.substring(1); // Strips the hashtag if it's there
+    }
     if (!cleanCode) {
       Alert.alert("Missing Code", "Please enter or scan a ticket code.");
       return;
