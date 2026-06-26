@@ -4,5 +4,6 @@
     "strict": true,
     "jsx": "react-jsx",
     "types": ["nativewind/types"]
-  }
+  },
+  "exclude": ["node_modules", "supabase/functions"]
 }
