@@ -73,9 +73,9 @@ const fetchAnalytics = async () => {
       const [ticketsRes, tiersRes] = await Promise.all([
         supabase
           .from("tickets")
-          .select("event_id, tier_id, purchased_at, profiles(gender, dob)")
+          .select("event_id, tier_id, status, purchased_at, profiles(gender, dob)")
           .in("event_id", eventIds)
-          .eq("status", "valid"),
+          .in("status", ["valid", "scanned"]),
         supabase
           .from("ticket_tiers")
           .select("id, price, event_id")
@@ -87,6 +87,7 @@ const fetchAnalytics = async () => {
 
       let totalGlobalRevenue = 0;
       let totalGlobalTickets = 0;
+      let totalGlobalVisits = 0;
       let globalRevenueArray = [0, 0, 0, 0, 0, 0, 0];
       let globalGender = { m: 0, f: 0 };
       let globalAgeBuckets: any = { "18-20": 0, "21-25": 0, "26-30": 0, "31-40": 0, "40+": 0 };
@@ -104,6 +105,8 @@ const fetchAnalytics = async () => {
         let maleCount = 0; let femaleCount = 0;
         let ageBuckets: any = { "18-20": 0, "21-25": 0, "26-30": 0, "31-40": 0, "40+": 0 };
         
+        const visitsCount = eventTickets.filter(t => t.status === 'scanned').length;
+
         const eventRevenue = eventTickets.reduce((sum, ticket) => {
           const tier = allTiers.find((t) => t.id === ticket.tier_id);
           const price = Number(tier?.price) || 0;
@@ -142,6 +145,7 @@ const fetchAnalytics = async () => {
 
         totalGlobalRevenue += eventRevenue;
         totalGlobalTickets += eventTickets.length;
+        totalGlobalVisits += visitsCount;
 
         // Calculate highest age bucket and percentages
         let topAge = "N/A"; let topAgeCount = 0;
@@ -157,6 +161,7 @@ const fetchAnalytics = async () => {
           revenue: revenueArray, 
           total: `R ${eventRevenue.toLocaleString()}`,
           ticketsSold: eventTickets.length,
+          visits: visitsCount,
           gender: { f: fPct, m: 100 - fPct },
           topAge: topAge,
           topAgePct: eventTickets.length > 0 ? Math.round((topAgeCount / eventTickets.length) * 100) : 0
@@ -176,6 +181,7 @@ const fetchAnalytics = async () => {
         revenue: globalRevenueArray,
         total: `R ${totalGlobalRevenue.toLocaleString()}`,
         ticketsSold: totalGlobalTickets,
+        visits: totalGlobalVisits,
         gender: { f: gFPct, m: 100 - gFPct },
         topAge: gTopAge,
         topAgePct: totalGlobalTickets > 0 ? Math.round((gTopAgeCount / totalGlobalTickets) * 100) : 0
@@ -363,7 +369,7 @@ const fetchAnalytics = async () => {
               />
               <StatCard
                 label="Visits"
-                value="N/A"
+                value={selectedEvent.visits}
                 change="0%"
                 icon={<Users color="#60A5FA" size={20} />}
               />

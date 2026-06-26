@@ -5,15 +5,15 @@ import {
   Text,
   TouchableOpacity,
   StyleSheet,
-  Image,
   Dimensions,
   Alert,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
-import { useNavigation, useRoute, RouteProp } from "@react-navigation/native";
+import { useNavigation, useRoute } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { ArrowLeft } from "lucide-react-native";
+import QRCode from "react-native-qrcode-svg"; // 🚨 NEW: Client-side QR generator
 
 // Components
 import TopBanner from "../components/TopBanner";
@@ -42,6 +42,10 @@ const TicketDisplayScreen = () => {
     ticketPrice,
   } = route.params || {};
 
+  // 🚨 CLEANUP: Strip out the display '#' symbol so the visual QR code only 
+  // encodes the exact database matching string (e.g., 'GK-882910')
+  const cleanTicketCode = ticketId.startsWith('#') ? ticketId.slice(1) : ticketId;
+
   const handleViewEvent = () => {
     if (!eventId) {
       Alert.alert(
@@ -68,7 +72,6 @@ const TicketDisplayScreen = () => {
       <TopBanner />
 
       <SafeAreaView className="flex-1" edges={["left", "right"]}>
-        {/* ✅ CHANGED: Increased pt-24 to pt-32 and added mt-4 to push content down */}
         <View className="flex-1 pt-32 mt-4 px-6 items-center">
           {/* Header */}
           <View className="w-full flex-row items-center mb-6">
@@ -107,17 +110,16 @@ const TicketDisplayScreen = () => {
           </Text>
 
           {/* QR Code Card */}
+          {/* 🚨 CHANGED: Replaced the online network-dependent Image with an offline vector QRCode component */}
           <View
-            className="bg-white rounded-3xl items-center justify-center shadow-2xl shadow-black/80 mb-8"
+            className="bg-white rounded-3xl items-center justify-center shadow-2xl shadow-black/80 mb-8 p-4"
             style={{ width: QR_SIZE, height: QR_SIZE }}
           >
-            <Image
-              source={{
-                uri: `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${ticketId}`,
-              }}
-              className="w-full h-full p-4"
-              resizeMode="contain"
-              style={{ width: QR_SIZE - 40, height: QR_SIZE - 40 }}
+            <QRCode
+              value={cleanTicketCode}
+              size={QR_SIZE - 40}
+              backgroundColor="white"
+              color="black"
             />
           </View>
 

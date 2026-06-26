@@ -116,7 +116,7 @@ const ManageEventScreen = () => {
           .from("tickets")
           .select("tier_id")
           .eq("event_id", eventId)
-          .eq("status", "valid"),
+          .in("status", ["valid", "scanned"]),
       ]);
 
       if (eventRes.error) throw eventRes.error;

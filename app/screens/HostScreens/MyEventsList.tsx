@@ -90,7 +90,7 @@ const MyEventsList = () => {
           .from("tickets")
           .select("event_id, tier_id")
           .in("event_id", eventIds)
-          .eq("status", "valid"),
+          .in("status", ["valid", "scanned"]),
         supabase
           .from("ticket_tiers")
           .select("id, price, event_id")

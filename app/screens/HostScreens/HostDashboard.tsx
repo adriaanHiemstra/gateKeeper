@@ -389,6 +389,11 @@ const HostDashboard = () => {
                 label="Payouts"
                 onPress={() => navigation.navigate("PayoutsSetup")}
               />
+              <ActionButton
+                icon={<QrCode color="#D087FF" size={28} />}
+                label="Scan Tickets"
+                onPress={() => navigation.navigate("ScanTickets" as never)} 
+              />
             </View>
 
             {/* RECENT ACTIVITY FEED */}
