@@ -8,6 +8,7 @@ import Search from "../screens/Search";
 // import Profile from "../screens/Profile"; // ❌ REMOVED
 
 // Auth
+import Welcome from "../screens/Welcome";
 import SignUp from "../screens/SignUp";
 import Login from "../screens/Login";
 import Onboarding from "../screens/Onboarding";
@@ -69,10 +70,17 @@ import PromoteEventScreen from "../screens/HostScreens/PromoteEventScreen";
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
-export default function AppNavigator() {
+type AppNavigatorProps = {
+  // Chosen at runtime from the auth/session state (see App.tsx).
+  initialRouteName?: keyof RootStackParamList;
+};
+
+export default function AppNavigator({
+  initialRouteName = "SignUp",
+}: AppNavigatorProps) {
   return (
     <Stack.Navigator
-      initialRouteName="Login"
+      initialRouteName={initialRouteName}
       screenOptions={{ headerShown: false }}
     >
       {/* Main Tabs */}
@@ -148,6 +156,7 @@ export default function AppNavigator() {
       <Stack.Screen name="DeleteAccount" component={DeleteAccountScreen} />
 
       {/* Auth */}
+      <Stack.Screen name="Welcome" component={Welcome} />
       <Stack.Screen name="Login" component={Login} />
       <Stack.Screen name="SignUp" component={SignUp} />
       <Stack.Screen name="Onboarding" component={Onboarding} />

@@ -71,46 +71,40 @@ const WishListScreen = () => {
     setLoading(true);
 
     try {
-      // ✅ Pull from our new event_interactions table!
-      const { data, error } = await supabase
-        .from("event_interactions")
-        .select(
-          `
-          event_id,
-          intent,
-          events (
-            id,
-            title,
-            banner_url,
-            category,
-            date
-          )
-        `,
-        )
-        .eq("user_id", user.id)
-        .in("intent", ["SAVED", "GOING"]) // ✅ Pulls both Hearted and RSVP'd events
-        .order("created_at", { ascending: false });
+      // Pull saved (hearts) and RSVP'd ("going") events from their own tables.
+      const eventSelect = `event_id, events ( id, title, banner_url, categories, date )`;
+      const [savedRes, goingRes] = await Promise.all([
+        supabase
+          .from("saved_events")
+          .select(eventSelect)
+          .eq("user_id", user.id)
+          .order("created_at", { ascending: false }),
+        supabase
+          .from("event_rsvps")
+          .select(eventSelect)
+          .eq("user_id", user.id)
+          .order("created_at", { ascending: false }),
+      ]);
 
-      if (error) throw error;
+      if (savedRes.error) throw savedRes.error;
+      if (goingRes.error) throw goingRes.error;
 
-      if (data) {
-        // ✅ Deduplicate: In case they clicked "Heart" AND "Going", we only want to show the event once
-        const uniqueEventsMap = new Map();
-
-        data.forEach((item: any) => {
+      // Deduplicate: an event the user both saved AND is going to shows once.
+      const uniqueEventsMap = new Map();
+      [...(savedRes.data || []), ...(goingRes.data || [])].forEach(
+        (item: any) => {
           const eventData = Array.isArray(item.events)
             ? item.events[0]
             : item.events;
           if (eventData && !uniqueEventsMap.has(eventData.id)) {
             uniqueEventsMap.set(eventData.id, eventData);
           }
-        });
+        },
+      );
 
-        const formattedEvents = Array.from(uniqueEventsMap.values());
-
-        setEvents(formattedEvents);
-        setFilteredEvents(formattedEvents);
-      }
+      const formattedEvents = Array.from(uniqueEventsMap.values());
+      setEvents(formattedEvents);
+      setFilteredEvents(formattedEvents);
     } catch (error: any) {
       console.error("Error fetching wishlist:", error.message);
     } finally {
@@ -138,15 +132,22 @@ const WishListScreen = () => {
     setFilteredEvents((prev) => prev.filter((e) => e.id !== eventId));
 
     try {
-      // ✅ Delete the interactions for this specific user & event
-      const { error } = await supabase
-        .from("event_interactions")
-        .delete()
-        .eq("user_id", user.id)
-        .eq("event_id", eventId)
-        .in("intent", ["SAVED", "GOING"]);
+      // Remove from both the wishlist and any RSVP for this user & event.
+      const [savedDel, goingDel] = await Promise.all([
+        supabase
+          .from("saved_events")
+          .delete()
+          .eq("user_id", user.id)
+          .eq("event_id", eventId),
+        supabase
+          .from("event_rsvps")
+          .delete()
+          .eq("user_id", user.id)
+          .eq("event_id", eventId),
+      ]);
 
-      if (error) throw error;
+      if (savedDel.error) throw savedDel.error;
+      if (goingDel.error) throw goingDel.error;
     } catch (error: any) {
       Alert.alert("Error", "Could not remove event from wishlist.");
       fetchWishlist(); // Re-sync if the delete failed
@@ -217,7 +218,10 @@ const WishListScreen = () => {
             {item.title}
           </Text>
           <Text className="text-orange-500 text-xs font-bold uppercase tracking-wider mt-1">
-            {item.category || "Event"}
+            {/* 🔥 SAFELY PULLING FROM THE CATEGORIES ARRAY */}
+            {item.categories && item.categories.length > 0
+              ? item.categories[0]
+              : "Event"}
           </Text>
         </LinearGradient>
       </TouchableOpacity>

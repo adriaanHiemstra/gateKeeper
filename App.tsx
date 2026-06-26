@@ -8,8 +8,40 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { NavigationContainer } from "@react-navigation/native";
 
 import AppNavigator from "./app/navigation/AppNavigator";
-import { AuthProvider } from "./app/context/AuthContext";
+import { AuthProvider, useAuth } from "./app/context/AuthContext";
 import { SavedEventsProvider } from "./app/context/SavedEventsContext";
+
+// Shared full-screen loading state.
+const Splash = () => (
+  <View
+    style={{
+      flex: 1,
+      justifyContent: "center",
+      alignItems: "center",
+      backgroundColor: "#121212",
+    }}
+  >
+    <ActivityIndicator size="large" color="#FA8900" />
+  </View>
+);
+
+// Decides where the app opens, based on the auth/session state:
+//   - not logged in            → SignUp
+//   - logged in, not onboarded → Onboarding
+//   - logged in and onboarded  → Home
+function RootGate() {
+  const { isLoading, session, onboarded } = useAuth();
+
+  if (isLoading) return <Splash />;
+
+  const initialRouteName = !session
+    ? "Welcome"
+    : onboarded
+      ? "Home"
+      : "Onboarding";
+
+  return <AppNavigator initialRouteName={initialRouteName} />;
+}
 
 export default function App() {
   const [fontsLoaded, setFontsLoaded] = useState(false);
@@ -25,18 +57,7 @@ export default function App() {
   }, []);
 
   if (!fontsLoaded) {
-    return (
-      <View
-        style={{
-          flex: 1,
-          justifyContent: "center",
-          alignItems: "center",
-          backgroundColor: "#121212",
-        }}
-      >
-        <ActivityIndicator size="large" color="#FA8900" />
-      </View>
-    );
+    return <Splash />;
   }
 
   return (
@@ -45,7 +66,7 @@ export default function App() {
       <NavigationContainer>
         <AuthProvider>
           <SavedEventsProvider>
-            <AppNavigator />
+            <RootGate />
             <StatusBar style="light" />
           </SavedEventsProvider>
         </AuthProvider>

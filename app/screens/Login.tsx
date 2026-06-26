@@ -56,20 +56,31 @@ const Login = () => {
     setLoading(true);
 
     // 👇 SUPABASE LOGIN LOGIC
-    const { error } = await supabase.auth.signInWithPassword({
+    const { data, error } = await supabase.auth.signInWithPassword({
       email: email,
       password: password,
     });
 
-    setLoading(false);
-
     if (error) {
+      setLoading(false);
       Alert.alert("Login Failed", error.message);
-    } else {
-      // Success! Navigate to Home
-      // @ts-ignore
-      navigation.replace("Home");
+      return;
     }
+
+    // Send first-timers (who never finished onboarding) to Onboarding,
+    // and returning users straight to Home.
+    let onboarded = true;
+    if (data.user) {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("onboarded")
+        .eq("id", data.user.id)
+        .single();
+      onboarded = profile?.onboarded ?? false;
+    }
+
+    setLoading(false);
+    navigation.replace(onboarded ? "Home" : "Onboarding");
   };
 
   const handleStaffLogin = () => {
@@ -132,7 +143,7 @@ const Login = () => {
                   onChangeText={setEmail}
                   autoCapitalize="none"
                   keyboardType="email-address"
-                  className="flex-1 text-white text-lg font-medium h-full"
+                  className="flex-1 text-white text-lg font-medium h-full ml-1"
                   style={{ fontFamily: "Jost-Medium" }}
                 />
               </View>
@@ -151,7 +162,7 @@ const Login = () => {
                   value={password}
                   onChangeText={setPassword}
                   secureTextEntry={!showPassword}
-                  className="flex-1 text-white text-lg font-medium h-full"
+                  className="flex-1 text-white text-lg font-medium h-full ml-1"
                   style={{ fontFamily: "Jost-Medium" }}
                 />
                 <TouchableOpacity

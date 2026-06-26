@@ -30,6 +30,9 @@ import {
 import TopBanner from "../../components/TopBanner";
 import BottomNav from "../../components/BottomNav";
 
+// Backend
+import { useAuth } from "../../context/AuthContext";
+
 // Styles
 import { bannerGradient } from "../../styles/colours";
 import { RootStackParamList } from "../../types/types";
@@ -37,6 +40,7 @@ import { RootStackParamList } from "../../types/types";
 const AccountSettings = () => {
   const navigation =
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const { signOut } = useAuth();
 
   const SettingsItem = ({
     icon,
@@ -75,7 +79,12 @@ const AccountSettings = () => {
       {
         text: "Log Out",
         style: "destructive",
-        onPress: () => navigation.navigate("Login"),
+        onPress: async () => {
+          // Actually end the Supabase session, then wipe the back stack so the
+          // user can't navigate back into the authenticated app.
+          await signOut();
+          navigation.reset({ index: 0, routes: [{ name: "Welcome" }] });
+        },
       },
     ]);
   };

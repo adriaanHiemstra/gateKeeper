@@ -35,7 +35,7 @@ import { fireGradient } from "../styles/colours";
 import { useSavedEvent } from "../hooks/useSavedEvent";
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("screen");
-const CARD_HEIGHT = SCREEN_WIDTH * 1.5;
+const DEFAULT_CARD_HEIGHT = SCREEN_WIDTH * 1.5;
 
 type PostFeedCardProps = {
   id: string;
@@ -50,6 +50,7 @@ type PostFeedCardProps = {
   onOpenSocial: () => void;
   onViewEvent: () => void;
   //onOpenDiscussion: () => void;
+  cardHeight?: number;
 };
 
 const PostFeedCard = ({
@@ -63,8 +64,10 @@ const PostFeedCard = ({
   attendeesCount,
   onOpenSocial,
   onViewEvent,
+  cardHeight,
   //onOpenDiscussion,
 }: PostFeedCardProps) => {
+  const CARD_HEIGHT = cardHeight ?? DEFAULT_CARD_HEIGHT;
   const [isFullScreen, setIsFullScreen] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
 
@@ -127,7 +130,7 @@ const PostFeedCard = ({
   return (
     <>
       <View
-        className="mb-2 bg-black relative rounded-[32px] overflow-hidden mx-1 shadow-xl shadow-black"
+        className="bg-black relative rounded-[32px] overflow-hidden mx-1 shadow-xl shadow-black"
         style={{ height: CARD_HEIGHT, width: SCREEN_WIDTH - 8 }}
       >
         <Pressable

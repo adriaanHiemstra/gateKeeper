@@ -1,7 +1,9 @@
 {
   "extends": "expo/tsconfig.base",
-  "jsx": "react-jsx",
   "compilerOptions": {
-    "strict": true
-  }
+    "strict": true,
+    "jsx": "react-jsx",
+    "types": ["nativewind/types"]
+  },
+  "exclude": ["node_modules", "supabase/functions"]
 }

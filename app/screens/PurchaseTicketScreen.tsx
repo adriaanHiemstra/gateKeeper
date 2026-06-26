@@ -13,14 +13,8 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { useNavigation, useRoute, RouteProp } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import {
-  ArrowLeft,
-  Minus,
-  Plus,
-  CreditCard,
-  Wallet,
-  ShieldCheck,
-} from "lucide-react-native";
+import { ArrowLeft, Minus, Plus, ShieldCheck } from "lucide-react-native";
+import * as WebBrowser from "expo-web-browser";
 
 import { bannerGradient, fireGradient } from "../styles/colours";
 import TopBanner from "../components/TopBanner";
@@ -55,7 +49,6 @@ const PurchaseTicketScreen = () => {
   });
 
   const [tickets, setTickets] = useState<any[]>([]);
-  const [paymentMethod, setPaymentMethod] = useState<"card" | "apple">("card");
 
   // 2. FETCH DATA IF MISSING
   useEffect(() => {
@@ -128,8 +121,11 @@ const PurchaseTicketScreen = () => {
     }
   };
 
+  // Buyer-pays booking fee: 6% + R2 per ticket. This MUST mirror the maths in
+  // the initialize-transaction Edge Function so the preview matches the charge.
+  const ticketCount = tickets.reduce((acc, t) => acc + t.quantity, 0);
   const subtotal = tickets.reduce((acc, t) => acc + t.price * t.quantity, 0);
-  const fees = subtotal * 0.05;
+  const fees = subtotal * 0.06 + 2 * ticketCount;
   const total = subtotal + fees;
 
   const updateQuantity = (id: string, change: number) => {
@@ -144,92 +140,79 @@ const PurchaseTicketScreen = () => {
     );
   };
 
-const handleCheckout = async () => {
-    if (total === 0) {
+  const handleCheckout = async () => {
+    const purchasedTiers = tickets.filter((t) => t.quantity > 0);
+    if (purchasedTiers.length === 0) {
       Alert.alert("Cart Empty", "Please select at least one ticket.");
       return;
     }
+    if (!eventId) return;
 
-    // 🚨 1. Find ALL tiers where the user selected at least 1 ticket
-    const purchasedTiers = tickets.filter((t) => t.quantity > 0);
-    if (purchasedTiers.length === 0) return;
-    
-    const validEventId = eventId!;
+    setIsBuying(true);
+    try {
+      // 1. Ask the server to price the order and start a Paystack transaction.
+      //    We only send tier ids + quantities; the server sets the real prices.
+      const cart = purchasedTiers.map((t) => ({
+        tier_id: t.id,
+        name: t.name,
+        price: t.price,
+        quantity: t.quantity,
+      }));
 
-    Alert.alert(
-      "Confirm Payment",
-      `Charge R ${total.toFixed(0)} to your ${paymentMethod}?`,
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Pay Now",
-          onPress: async () => {
-            setIsBuying(true);
+      const { data: init, error: initErr } = await supabase.functions.invoke(
+        "initialize-transaction",
+        { body: { eventId, cart } }
+      );
 
-            try {
-              const {
-                data: { user },
-              } = await supabase.auth.getUser();
+      if (initErr || !init?.ok) {
+        Alert.alert(
+          "Checkout failed",
+          init?.error ?? "Couldn't start payment. Please try again."
+        );
+        return;
+      }
 
-              if (!user) {
-                Alert.alert("Error", "You must be logged in to buy tickets.");
-                return;
-              }
+      // 2. Open Paystack's hosted checkout; the user pays, then closes the tab.
+      await WebBrowser.openBrowserAsync(init.authorization_url);
 
-              // 🚨 2. Build an array of tickets to bulk insert
-              const ticketsToInsert: any[] = [];
+      // 3. Confirm the real outcome with the server (which mints the tickets).
+      const { data: verify } = await supabase.functions.invoke(
+        "verify-transaction",
+        { body: { reference: init.reference } }
+      );
 
-              purchasedTiers.forEach((tier) => {
-                // Loop through the QUANTITY selected for this tier
-                for (let i = 0; i < tier.quantity; i++) {
-                  // Added a random number at the end so loop doesn't create duplicate QR codes in the same millisecond!
-                  const uniqueQrCode = `GK-${validEventId.substring(0, 4)}-${Date.now().toString().slice(-6)}-${Math.floor(
-                    Math.random() * 1000
-                  )}`.toUpperCase();
+      if (verify?.ok && verify.status === "success") {
+        // Grab one of the freshly-minted tickets to show on the next screen.
+        const { data: minted } = await supabase
+          .from("tickets")
+          .select("qr_code, ticket_tiers ( name )")
+          .eq("payment_reference", init.reference)
+          .limit(1)
+          .maybeSingle();
 
-                  ticketsToInsert.push({
-                    event_id: validEventId,
-                    user_id: user.id,
-                    tier_id: tier.id,
-                    qr_code: uniqueQrCode,
-                    status: "valid",
-                    purchased_at: new Date().toISOString(),
-                  });
-                }
-              });
-
-              // 🚨 3. Bulk insert the entire array into Supabase
-              const { error } = await supabase
-                .from("tickets")
-                .insert(ticketsToInsert)
-                .select();
-
-              if (error) throw error;
-
-              // 4. Navigate to the success screen (passing the first ticket's QR code to display)
-              navigation.navigate("TicketDisplay", {
-                eventId: validEventId,
-                eventTitle: eventDetails.name,
-                ticketId: `${ticketsToInsert[0].qr_code}`, 
-                eventImage: eventDetails.banner,
-                eventLocation: eventDetails.location,
-                eventTime: eventDetails.time,
-                ticketTierName: purchasedTiers[0].name, 
-                ticketPrice: total.toFixed(0),
-              });
-            } catch (error: any) {
-              console.error("Purchase error:", error);
-              Alert.alert(
-                "Purchase Failed",
-                error.message || "Could not complete purchase"
-              );
-            } finally {
-              setIsBuying(false);
-            }
-          },
-        },
-      ]
-    );
+        navigation.navigate("TicketDisplay", {
+          eventId: eventId,
+          eventTitle: eventDetails.name,
+          ticketId: minted?.qr_code ? `#${minted.qr_code}` : undefined,
+          eventImage: eventDetails.banner,
+          eventLocation: eventDetails.location,
+          eventTime: eventDetails.time,
+          ticketTierName:
+            (minted as any)?.ticket_tiers?.name ?? purchasedTiers[0].name,
+          ticketPrice: total.toFixed(2),
+        });
+      } else {
+        Alert.alert(
+          "Payment not completed",
+          "If you were charged, your tickets will appear in My Tickets shortly."
+        );
+      }
+    } catch (error: any) {
+      console.error("Checkout error:", error);
+      Alert.alert("Error", error?.message ?? "Something went wrong during checkout.");
+    } finally {
+      setIsBuying(false);
+    }
   };
 
   if (loadingData) {
@@ -347,69 +330,20 @@ const handleCheckout = async () => {
             ))
           )}
 
-          {/* Payment Method Section (Same as before) */}
-          <Text className="text-white text-xl font-bold mb-4 mt-4">
-            Payment Method
-          </Text>
-          <View className="flex-row gap-4 mb-8">
-            <TouchableOpacity
-              onPress={() => setPaymentMethod("card")}
-              className={`flex-1 p-4 rounded-2xl border items-center ${
-                paymentMethod === "card"
-                  ? "bg-orange-500/20 border-orange-500"
-                  : "bg-white/5 border-white/10"
-              }`}
-            >
-              <CreditCard
-                color={paymentMethod === "card" ? "#FA8900" : "white"}
-                size={24}
-                className="mb-2"
-              />
-              <Text
-                className={`font-bold ${
-                  paymentMethod === "card" ? "text-orange-400" : "text-white"
-                }`}
-              >
-                Card
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => setPaymentMethod("apple")}
-              className={`flex-1 p-4 rounded-2xl border items-center ${
-                paymentMethod === "apple"
-                  ? "bg-orange-500/20 border-orange-500"
-                  : "bg-white/5 border-white/10"
-              }`}
-            >
-              <Wallet
-                color={paymentMethod === "apple" ? "#FA8900" : "white"}
-                size={24}
-                className="mb-2"
-              />
-              <Text
-                className={`font-bold ${
-                  paymentMethod === "apple" ? "text-orange-400" : "text-white"
-                }`}
-              >
-                Apple Pay
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* Summary Section (Same as before) */}
-          <View className="bg-black/40 p-6 rounded-2xl border border-white/5 mb-8">
+          {/* Summary Section */}
+          <View className="bg-black/40 p-6 rounded-2xl border border-white/5 mb-8 mt-4">
             <View className="flex-row justify-between mb-2">
               <Text className="text-gray-400">Subtotal</Text>
-              <Text className="text-white font-bold">R {subtotal}</Text>
+              <Text className="text-white font-bold">R {subtotal.toFixed(2)}</Text>
             </View>
             <View className="flex-row justify-between mb-4 pb-4 border-b border-white/10">
-              <Text className="text-gray-400">Service Fees (5%)</Text>
-              <Text className="text-white font-bold">R {fees.toFixed(0)}</Text>
+              <Text className="text-gray-400">Service Fee</Text>
+              <Text className="text-white font-bold">R {fees.toFixed(2)}</Text>
             </View>
             <View className="flex-row justify-between items-center">
               <Text className="text-white text-xl font-bold">Total</Text>
               <Text className="text-white text-3xl font-bold">
-                R {total.toFixed(0)}
+                R {total.toFixed(2)}
               </Text>
             </View>
           </View>
@@ -417,7 +351,7 @@ const handleCheckout = async () => {
           <View className="flex-row justify-center items-center mb-4 opacity-60">
             <ShieldCheck color="#aaa" size={14} className="mr-2" />
             <Text className="text-gray-400 text-xs">
-              Secure 256-bit SSL Encrypted Payment
+              Payments secured by Paystack
             </Text>
           </View>
         </ScrollView>
@@ -441,7 +375,7 @@ const handleCheckout = async () => {
                   className="text-white text-xl font-bold tracking-wide"
                   style={{ fontFamily: "Jost-Medium" }}
                 >
-                  PAY R {total.toFixed(0)}
+                  PAY R {total.toFixed(2)}
                 </Text>
               )}
             </LinearGradient>

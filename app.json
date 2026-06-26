@@ -3,15 +3,18 @@
     "name": "MyEventApp",
     "slug": "MyEventApp",
     "version": "1.0.0",
+    "scheme": "gatekeeper",
     "orientation": "portrait",
     "icon": "./app/assets/icon.png",
     "userInterfaceStyle": "dark",
     "splash": {
-      "image": "./app/assets/splash.png",
+      "image": "./app/assets/splash-icon.png",
       "resizeMode": "contain",
       "backgroundColor": "#121212"
     },
-    "assetBundlePatterns": ["**/*"],
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.yourname.myeventapp"
@@ -34,7 +37,8 @@
         }
       ],
       "expo-font",
-      "expo-video"
+      "expo-video",
+      "expo-web-browser"
     ]
   }
 }

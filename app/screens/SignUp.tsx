@@ -78,11 +78,18 @@ const SignUp = () => {
 
       if (error) throw error;
 
-      Alert.alert(
-        "Success!",
-        "Your account has been created. You can now log in."
-      );
-      navigation.navigate("Login");
+      // If email confirmation is OFF, signUp returns a live session — the user
+      // is already authenticated, so take them straight into onboarding.
+      if (data.session) {
+        navigation.replace("Onboarding");
+      } else {
+        // Email confirmation is ON: they must confirm before they can log in.
+        Alert.alert(
+          "Almost there!",
+          "Check your email to confirm your account, then log in."
+        );
+        navigation.navigate("Login");
+      }
     } catch (error: any) {
       Alert.alert("Sign Up Error", error.message);
     } finally {
@@ -93,7 +100,6 @@ const SignUp = () => {
   return (
     <View className="flex-1 bg-[#121212]">
       <LinearGradient {...bannerGradient} style={StyleSheet.absoluteFill} />
-      <View className="absolute inset-0 bg-black/60" />
 
       <SafeAreaView className="flex-1">
         <KeyboardAvoidingView
@@ -129,14 +135,15 @@ const SignUp = () => {
                 <Text className="text-gray-400 ml-2 mb-2 font-medium">
                   Full Name
                 </Text>
-                <View className="flex-row items-center bg-white/5 border border-white/10 rounded-2xl px-4 h-14">
+                <View className="flex-row items-center bg-white/10 border border-white/20 rounded-2xl px-4 h-14">
                   <User color="#999" size={20} className="mr-3" />
                   <TextInput
                     placeholder="John Doe"
                     placeholderTextColor="#666"
                     value={name}
                     onChangeText={setName}
-                    className="flex-1 text-white text-lg"
+                    className="flex-1 text-white text-lg font-medium h-full ml-1"
+                    style={{ fontFamily: "Jost-Medium", textAlignVertical: "center" }}
                     autoCapitalize="words"
                   />
                 </View>
@@ -147,14 +154,15 @@ const SignUp = () => {
                 <Text className="text-gray-400 ml-2 mb-2 font-medium">
                   Username
                 </Text>
-                <View className="flex-row items-center bg-white/5 border border-white/10 rounded-2xl px-4 h-14">
+                <View className="flex-row items-center bg-white/10 border border-white/20 rounded-2xl px-4 h-14">
                   <AtSign color="#999" size={20} className="mr-3" />
                   <TextInput
                     placeholder="johndoe123"
                     placeholderTextColor="#666"
                     value={username}
                     onChangeText={setUsername}
-                    className="flex-1 text-white text-lg"
+                    className="flex-1 text-white text-lg font-medium h-full ml-1"
+                    style={{ fontFamily: "Jost-Medium", textAlignVertical: "center" }}
                     autoCapitalize="none"
                     autoCorrect={false}
                   />
@@ -168,7 +176,7 @@ const SignUp = () => {
                 </Text>
                 <TouchableOpacity
                   onPress={() => setShowDatePicker(true)}
-                  className="flex-row items-center bg-white/5 border border-white/10 rounded-2xl px-4 h-14"
+                  className="flex-row items-center bg-white/10 border border-white/20 rounded-2xl px-4 h-14"
                 >
                   <Calendar color="#999" size={20} className="mr-3" />
                   <Text className={`flex-1 text-lg ${dob ? "text-white" : "text-[#666]"}`}>
@@ -253,14 +261,15 @@ const SignUp = () => {
                 <Text className="text-gray-400 ml-2 mb-2 font-medium">
                   Email
                 </Text>
-                <View className="flex-row items-center bg-white/5 border border-white/10 rounded-2xl px-4 h-14">
+                <View className="flex-row items-center bg-white/10 border border-white/20 rounded-2xl px-4 h-14">
                   <Mail color="#999" size={20} className="mr-3" />
                   <TextInput
                     placeholder="you@example.com"
                     placeholderTextColor="#666"
                     value={email}
                     onChangeText={setEmail}
-                    className="flex-1 text-white text-lg"
+                    className="flex-1 text-white text-lg font-medium h-full ml-1"
+                    style={{ fontFamily: "Jost-Medium", textAlignVertical: "center" }}
                     keyboardType="email-address"
                     autoCapitalize="none"
                   />
@@ -272,14 +281,15 @@ const SignUp = () => {
                 <Text className="text-gray-400 ml-2 mb-2 font-medium">
                   Password
                 </Text>
-                <View className="flex-row items-center bg-white/5 border border-white/10 rounded-2xl px-4 h-14">
+                <View className="flex-row items-center bg-white/10 border border-white/20 rounded-2xl px-4 h-14">
                   <Lock color="#999" size={20} className="mr-3" />
                   <TextInput
                     placeholder="••••••••"
                     placeholderTextColor="#666"
                     value={password}
                     onChangeText={setPassword}
-                    className="flex-1 text-white text-lg"
+                    className="flex-1 text-white text-lg font-medium h-full ml-1"
+                    style={{ fontFamily: "Jost-Medium", textAlignVertical: "center" }}
                     secureTextEntry={!showPassword}
                   />
                   <TouchableOpacity

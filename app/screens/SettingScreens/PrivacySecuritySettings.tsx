@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useCallback } from "react";
 import {
   View,
   Text,
@@ -6,38 +6,86 @@ import {
   StyleSheet,
   ScrollView,
   Switch,
+  Alert,
+  ActivityIndicator,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
-import { useNavigation } from "@react-navigation/native";
+import { useNavigation, useFocusEffect } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import {
   ArrowLeft,
-  Lock,
   Eye,
-  Shield,
-  Key,
-  Smartphone,
-  ChevronRight,
   EyeOff,
+  Key,
+  Users,
+  UserX,
+  ChevronRight,
 } from "lucide-react-native";
 
 // Components
 import TopBanner from "../../components/TopBanner";
 import BottomNav from "../../components/BottomNav";
 
+// Backend
+import { supabase } from "../../lib/supabase";
+import { useAuth } from "../../context/AuthContext";
+
 // Styles
-import { bannerGradient, fireGradient } from "../../styles/colours";
+import { bannerGradient } from "../../styles/colours";
 import { RootStackParamList } from "../../types/types";
 
 const PrivacySecuritySettings = () => {
   const navigation =
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const { user } = useAuth();
 
-  // Mock State
-  const [isPrivate, setIsPrivate] = useState(false);
-  const [activityStatus, setActivityStatus] = useState(true);
-  const [faceId, setFaceId] = useState(true);
+  const [showActivity, setShowActivity] = useState(true);
+  const [allowFriendRequests, setAllowFriendRequests] = useState(true);
+  const [loading, setLoading] = useState(true);
+
+  // Load the user's real privacy flags from their profile.
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      const load = async () => {
+        if (!user) return;
+        const { data } = await supabase
+          .from("profiles")
+          .select("show_activity, allow_friend_requests")
+          .eq("id", user.id)
+          .single();
+        if (active && data) {
+          setShowActivity(data.show_activity ?? true);
+          setAllowFriendRequests(data.allow_friend_requests ?? true);
+        }
+        if (active) setLoading(false);
+      };
+      load();
+      return () => {
+        active = false;
+      };
+    }, [user]),
+  );
+
+  // Optimistically flip the switch, then persist the single column. Revert on error.
+  const updateSetting = async (
+    column: "show_activity" | "allow_friend_requests",
+    value: boolean,
+    setter: (v: boolean) => void,
+    previous: boolean,
+  ) => {
+    if (!user) return;
+    setter(value);
+    const { error } = await supabase
+      .from("profiles")
+      .update({ [column]: value })
+      .eq("id", user.id);
+    if (error) {
+      setter(previous);
+      Alert.alert("Couldn't save", "Please try again.");
+    }
+  };
 
   const OptionRow = ({
     label,
@@ -49,7 +97,7 @@ const PrivacySecuritySettings = () => {
   }: any) => (
     <TouchableOpacity
       activeOpacity={type === "link" ? 0.7 : 1}
-      onPress={type === "link" ? onPress : null}
+      onPress={type === "link" ? onPress : undefined}
       className="flex-row items-center justify-between p-4 bg-white/5 border border-white/10 rounded-2xl mb-3"
     >
       <View className="flex-row items-center flex-1 mr-4">
@@ -66,7 +114,7 @@ const PrivacySecuritySettings = () => {
         <Switch
           value={value}
           onValueChange={onValueChange}
-          trackColor={{ false: "#333", true: "#FA8900" }} // User Theme Orange
+          trackColor={{ false: "#333", true: "#FA8900" }}
           thumbColor={"#fff"}
         />
       ) : (
@@ -107,60 +155,72 @@ const PrivacySecuritySettings = () => {
             </View>
           </View>
 
-          {/* 1. ACCOUNT PRIVACY */}
-          <Text className="text-gray-500 font-bold text-xs uppercase mb-3 ml-2">
-            Visibility
-          </Text>
+          {loading ? (
+            <View className="pt-20 items-center">
+              <ActivityIndicator size="large" color="#FA8900" />
+            </View>
+          ) : (
+            <>
+              {/* 1. VISIBILITY */}
+              <Text className="text-gray-500 font-bold text-xs uppercase mb-3 ml-2">
+                Visibility
+              </Text>
 
-          <OptionRow
-            label="Private Account"
-            icon={<Lock color="#FA8900" size={20} />}
-            value={isPrivate}
-            onValueChange={setIsPrivate}
-          />
-          <Text className="text-gray-400 text-xs ml-4 mb-6 leading-5">
-            When your account is private, only people you approve can see your
-            tickets and wishlists.
-          </Text>
+              <OptionRow
+                label="Activity Status"
+                icon={
+                  showActivity ? (
+                    <Eye color="#FA8900" size={20} />
+                  ) : (
+                    <EyeOff color="#666" size={20} />
+                  )
+                }
+                value={showActivity}
+                onValueChange={(v: boolean) =>
+                  updateSetting("show_activity", v, setShowActivity, showActivity)
+                }
+              />
+              <Text className="text-gray-400 text-xs ml-4 mb-6 leading-5">
+                When on, friends can see the events you've saved and are going to.
+              </Text>
 
-          <OptionRow
-            label="Activity Status"
-            icon={
-              activityStatus ? (
-                <Eye color="#FA8900" size={20} />
-              ) : (
-                <EyeOff color="#666" size={20} />
-              )
-            }
-            value={activityStatus}
-            onValueChange={setActivityStatus}
-          />
+              <OptionRow
+                label="Allow Friend Requests"
+                icon={<Users color="#FA8900" size={20} />}
+                value={allowFriendRequests}
+                onValueChange={(v: boolean) =>
+                  updateSetting(
+                    "allow_friend_requests",
+                    v,
+                    setAllowFriendRequests,
+                    allowFriendRequests,
+                  )
+                }
+              />
+              <Text className="text-gray-400 text-xs ml-4 mb-6 leading-5">
+                Turn this off to stop new people from adding you as a friend.
+              </Text>
 
-          {/* 2. LOGIN & SECURITY */}
-          <Text className="text-gray-500 font-bold text-xs uppercase mb-3 ml-2">
-            Login & Security
-          </Text>
+              {/* 2. LOGIN & SECURITY */}
+              <Text className="text-gray-500 font-bold text-xs uppercase mb-3 ml-2">
+                Login & Security
+              </Text>
 
-          <OptionRow
-            type="link"
-            label="Change Password"
-            icon={<Key color="#FA8900" size={20} />}
-            onPress={() => navigation.navigate("ChangePassword")} // Links to the screen we built
-          />
+              <OptionRow
+                type="link"
+                label="Change Password"
+                icon={<Key color="#FA8900" size={20} />}
+                onPress={() => navigation.navigate("ChangePassword")}
+              />
 
-          {/*<OptionRow
-            label="FaceID / Biometrics"
-            icon={<Shield color="#FA8900" size={20} />}
-            value={faceId}
-            onValueChange={setFaceId}
-          />*/}
-
-          {/*<OptionRow
-            type="link"
-            label="Two-Factor Auth"
-            icon={<Smartphone color="#FA8900" size={20} />}
-            onPress={() => console.log("2FA Flow")}
-          />*/}
+              <OptionRow
+                type="link"
+                label="Blocked Accounts"
+                icon={<UserX color="#FA8900" size={20} />}
+                onPress={() => navigation.navigate("BlockedAccounts")}
+              />
+            </>
+          )}
         </ScrollView>
       </SafeAreaView>
       <BottomNav />

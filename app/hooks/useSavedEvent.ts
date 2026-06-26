@@ -21,7 +21,10 @@ export const useSavedEvent = (eventId: string) => {
     // ⚡ INSTANT UI UPDATE (Bypasses React's global re-render queue)
     setIsSavedLocal((prev) => !prev);
 
-    // 🌍 Tell the Global Context to update in the background
+    // 🌍 toggleEvent is the SINGLE source of truth: it adds/removes the SAVED row
+    // in the database (and updates the global wishlist). We intentionally do NOT
+    // also call trackEventInteraction here — doing both wrote the row twice on a
+    // like and inserted a stray row on an un-like.
     await toggleEvent(eventId);
   };
 
