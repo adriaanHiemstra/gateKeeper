@@ -90,7 +90,7 @@ export type RootStackParamList = {
   HostNotifications: undefined;
   HostSecurity: undefined;
   HostSupport: undefined;
-  GuestList: undefined;
+  GuestList: { eventId: string; eventName?: string };
   TeamAccess: { eventId: string };
   PromoteEvent: { eventId: string };
   EventCommunity: { eventId: string; eventTitle: string };

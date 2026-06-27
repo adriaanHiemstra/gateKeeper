@@ -315,6 +315,13 @@ const ManageEventScreen = () => {
                     navigation.navigate("PromoteEvent", { eventId })
                   }
                 />
+                <ManagementAction
+                  icon={<Users color="white" size={24} />}
+                  label="Guest List"
+                  onPress={() =>
+                    navigation.navigate("GuestList", { eventId, eventName: eventTitle })
+                  }
+                />
                 {/*<ManagementAction
                   icon={<MessageCircle color="white" size={24} />}
                   label="Discussion"
