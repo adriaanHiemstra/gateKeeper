@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { CameraView, useCameraPermissions } from 'expo-camera'; // 🚨 NEW: Real Camera Integration
 import Animated, { 
   useSharedValue, 
@@ -34,7 +34,8 @@ import {
 } from 'lucide-react-native';
 
 // Backend
-import { supabase } from '../../lib/supabase'; 
+import { supabase } from '../../lib/supabase';
+import { RootStackParamList } from '../../types/types';
 
 // Styles
 import { electricGradient } from '../../styles/colours';
@@ -44,9 +45,20 @@ const SCAN_SIZE = width * 0.7;
 
 const ScanTicketsScreen = () => {
   const navigation = useNavigation();
-  
+
+  // Optional: when launched for a specific event, only tickets for THAT event
+  // are admitted. Launched globally (no param), it validates any of the host's
+  // own-event tickets (RLS still blocks other hosts' tickets).
+  const route = useRoute<RouteProp<RootStackParamList, 'ScanTickets'>>();
+  const eventId = route.params?.eventId;
+
   // --- Camera Permissions ---
   const [permission, requestPermission] = useCameraPermissions();
+
+  // Re-entrancy lock: the camera fires onBarcodeScanned many times per second.
+  // A ref flips synchronously (unlike state) so we never start two validations
+  // for the same scan while the first await is still in flight.
+  const processingRef = useRef(false);
 
   // --- State ---
   const [scanned, setScanned] = useState(false);
@@ -80,70 +92,87 @@ const ScanTicketsScreen = () => {
 
 // --- 💡 REAL SUPABASE VALIDATION LOGIC ---
   const handleValidateTicket = async (codeToVerify: string) => {
-    let cleanCode = codeToVerify.trim().toUpperCase();
-  
+    // NOTE: do NOT uppercase — real codes contain a lowercase UUID
+    // (e.g. GK-gk_9b1deb4d...-0), so uppercasing would never match the DB.
+    let cleanCode = codeToVerify.trim();
+
     if (cleanCode.startsWith('#')) {
-        cleanCode = cleanCode.substring(1); // Strips the hashtag if it's there
+      cleanCode = cleanCode.substring(1); // Strips the hashtag if it's there
     }
     if (!cleanCode) {
-      Alert.alert("Missing Code", "Please enter or scan a ticket code.");
+      Alert.alert('Missing Code', 'Please enter or scan a ticket code.');
       return;
     }
+
+    if (processingRef.current) return; // already validating a scan
+    processingRef.current = true;
 
     setLoading(true);
     setScanned(true); // Lock scanner loop
 
     try {
-      // 🚨 FIX: Select 'status' instead of 'scanned'. 
-      // Relationally pull 'ticket_tiers(name)' to get the tier name safely.
-      const { data: ticket, error } = await supabase
+      // Atomically CLAIM the ticket: flip 'valid' -> 'scanned' in a single
+      // statement, scoped to this event when we have one. We only get a row
+      // back if WE were the one that flipped it. This:
+      //   • admits ONLY 'valid' tickets (refunded/cancelled never match)
+      //   • makes double-scan impossible (two doors can't both win the flip)
+      //   • avoids a false "valid" when RLS silently blocks the update
+      let claim = supabase
         .from('tickets')
-        .select('id, qr_code, status, ticket_tiers ( name )')
+        .update({ status: 'scanned' })
         .eq('qr_code', cleanCode)
-        .maybeSingle();
+        .eq('status', 'valid');
+      if (eventId) claim = claim.eq('event_id', eventId);
+
+      const { data: claimed, error } = await claim.select(
+        'id, ticket_tiers ( name )'
+      );
 
       if (error) throw error;
 
-      // Case A: Ticket code doesn't exist at all
-      if (!ticket) {
-        setScanResult('invalid');
+      // Case A: we claimed it — first valid scan, let them in.
+      if (claimed && claimed.length > 0) {
+        setAttendeeName('Holder');
+        setTicketTier((claimed[0].ticket_tiers as any)?.name || 'General Admission');
+        setScanResult('valid');
+        setTicketCode(''); // Clear manual text field input
         resetScannerWithDelay();
         return;
       }
 
-      // Case B: Ticket status is already marked as 'scanned' or 'used'
-      if (ticket.status === 'scanned' || ticket.status === 'used') {
-        setAttendeeName("Guest Pass");
-        setTicketTier((ticket.ticket_tiers as any)?.name || "Event Ticket");
-        setScanResult('duplicate');
-        resetScannerWithDelay();
-        return;
-      }
-
-      // Case C: Valid ticket! Update its 'status' column to 'scanned'
-      const { error: updateError } = await supabase
+      // Case B: nothing claimed — look up why so we show the right message.
+      const { data: existing } = await supabase
         .from('tickets')
-        .update({ 
-          status: 'scanned' // 🌟 Updates status column to prevent re-entry
-        })
-        .eq('id', ticket.id);
+        .select('status, event_id, ticket_tiers ( name )')
+        .eq('qr_code', cleanCode)
+        .maybeSingle();
 
-      if (updateError) throw updateError;
+      const tierName = (existing?.ticket_tiers as any)?.name || 'Event Ticket';
 
-      // Populate interface with live ticket info
-      setAttendeeName("Holder");
-      setTicketTier((ticket.ticket_tiers as any)?.name || "General Admission");
-      setScanResult('valid');
-      setTicketCode(''); // Clear manual text field input
-      
+      if (!existing) {
+        setScanResult('invalid'); // code not found / not your event (RLS)
+      } else if (eventId && existing.event_id !== eventId) {
+        setAttendeeName('Wrong event');
+        setTicketTier(tierName);
+        setScanResult('invalid'); // real ticket, wrong door
+      } else if (existing.status === 'scanned' || existing.status === 'used') {
+        setAttendeeName('Already used');
+        setTicketTier(tierName);
+        setScanResult('duplicate'); // someone already came in on this ticket
+      } else {
+        setAttendeeName('Not valid');
+        setTicketTier(tierName);
+        setScanResult('invalid'); // refunded / cancelled / unknown status
+      }
+
       resetScannerWithDelay();
-
     } catch (error: any) {
-      Alert.alert("Database Error", error.message || "Could not check ticket info.");
+      Alert.alert('Database Error', error.message || 'Could not check ticket info.');
       setScanned(false);
       setScanResult(null);
     } finally {
       setLoading(false);
+      processingRef.current = false;
     }
   };
 
@@ -187,7 +216,7 @@ const ScanTicketsScreen = () => {
     );
   }
 
-  const ResultBanner = () => {
+  const renderResultBanner = () => {
     if (!scanResult) return null;
 
     let bgClass = "bg-green-500";
@@ -265,14 +294,14 @@ const ScanTicketsScreen = () => {
 
             {/* CENTRAL SCANNING ZONE */}
             <View className="items-center justify-center flex-1 relative">
-                <ResultBanner />
+                {renderResultBanner()}
 
                 {!scanResult && !manualEntry && (
                     <View style={{ width: SCAN_SIZE, height: SCAN_SIZE }} className="relative">
                         <View className="absolute top-0 left-0 w-10 h-10 border-t-4 border-l-4 border-white rounded-tl-2xl" />
                         <View className="absolute top-0 right-0 w-10 h-10 border-t-4 border-r-4 border-white rounded-tr-2xl" />
                         <View className="absolute bottom-0 left-0 w-10 h-10 border-b-4 border-l-4 border-white rounded-bl-2xl" />
-                        <View className="absolute bottom-0 right-0 w-10 h-10 border-b-4 border-r-4 border-white rounded-tr-2xl" />
+                        <View className="absolute bottom-0 right-0 w-10 h-10 border-b-4 border-r-4 border-white rounded-br-2xl" />
 
                         <Animated.View 
                             style={[{ width: '100%', height: 2, backgroundColor: '#D087FF', shadowColor: '#D087FF', shadowOpacity: 1, shadowRadius: 10 }, animatedLineStyle]} 
@@ -291,14 +320,14 @@ const ScanTicketsScreen = () => {
                     <View className="w-full">
                         <View className="flex-row items-center bg-black/80 rounded-xl px-4 h-14 mb-4 border border-white/20">
                             <Keyboard color="#ccc" size={20} className="mr-3" />
-                            <TextInput 
-                                placeholder="Enter Ticket ID (e.g. GK-882910)" 
+                            <TextInput
+                                placeholder="Paste ticket code (GK-…)"
                                 placeholderTextColor="#999"
                                 className="flex-1 text-white text-lg font-medium h-full ml-4 mb-1"
                                 autoFocus
                                 value={ticketCode}
                                 onChangeText={setTicketCode}
-                                autoCapitalize="characters"
+                                autoCapitalize="none"
                                 autoCorrect={false}
                                 editable={!loading}
                             />

@@ -80,7 +80,7 @@ export type RootStackParamList = {
   MyEventsList: undefined;
   ManageEvent: { eventId: string };
   CreateEvent: undefined;
-  ScanTickets: undefined;
+  ScanTickets: { eventId?: string } | undefined;
   EditEvent: { eventId: string };
   PostContent: { eventId: string };
   HostProfileEdit: undefined;
