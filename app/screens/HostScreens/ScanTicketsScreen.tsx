@@ -46,11 +46,15 @@ const SCAN_SIZE = width * 0.7;
 const ScanTicketsScreen = () => {
   const navigation = useNavigation();
 
-  // Optional: when launched for a specific event, only tickets for THAT event
-  // are admitted. Launched globally (no param), it validates any of the host's
-  // own-event tickets (RLS still blocks other hosts' tickets).
+  // Two ways in:
+  //  • Host (authenticated): scans straight against the DB; RLS keeps them to
+  //    their own events. An optional eventId scopes them to one event.
+  //  • Staff (no account): arrive from the staff-code login with a staffCode,
+  //    which authorizes each scan via the scan-ticket Edge Function, locked to
+  //    the single event that code unlocks.
   const route = useRoute<RouteProp<RootStackParamList, 'ScanTickets'>>();
   const eventId = route.params?.eventId;
+  const staffCode = route.params?.staffCode;
 
   // --- Camera Permissions ---
   const [permission, requestPermission] = useCameraPermissions();
@@ -90,7 +94,36 @@ const ScanTicketsScreen = () => {
     transform: [{ translateY: translateY.value }],
   }));
 
-// --- 💡 REAL SUPABASE VALIDATION LOGIC ---
+  // Map a normalized outcome to the on-screen banner. Shared by both the host
+  // (direct DB) path and the staff (Edge Function) path so they look identical.
+  const applyOutcome = (outcome: string, tier?: string) => {
+    switch (outcome) {
+      case 'valid':
+        setAttendeeName('Holder');
+        setTicketTier(tier || 'General Admission');
+        setScanResult('valid');
+        setTicketCode(''); // clear manual entry field
+        break;
+      case 'duplicate':
+        setAttendeeName('Already used');
+        setTicketTier(tier || 'Event Ticket');
+        setScanResult('duplicate');
+        break;
+      case 'wrong_event':
+        setAttendeeName('Wrong event');
+        setTicketTier(tier || 'Event Ticket');
+        setScanResult('invalid');
+        break;
+      case 'unauthorized':
+        setAttendeeName('Not authorized');
+        setScanResult('invalid');
+        break;
+      default: // 'invalid' | 'error' | refunded / cancelled / unknown
+        setScanResult('invalid');
+    }
+  };
+
+  // --- 💡 REAL SUPABASE VALIDATION LOGIC ---
   const handleValidateTicket = async (codeToVerify: string) => {
     // NOTE: do NOT uppercase — real codes contain a lowercase UUID
     // (e.g. GK-gk_9b1deb4d...-0), so uppercasing would never match the DB.
@@ -111,6 +144,21 @@ const ScanTicketsScreen = () => {
     setScanned(true); // Lock scanner loop
 
     try {
+      // ---- STAFF PATH ----
+      // No Supabase session, so RLS can't authorize them. The scan-ticket
+      // Edge Function validates the code and does the atomic claim server-side,
+      // locked to the event the code unlocks.
+      if (staffCode) {
+        const { data, error } = await supabase.functions.invoke('scan-ticket', {
+          body: { qr_code: cleanCode, code: staffCode },
+        });
+        if (error) throw error;
+        applyOutcome(data?.result ?? 'invalid', data?.tier);
+        resetScannerWithDelay();
+        return;
+      }
+
+      // ---- HOST PATH ----
       // Atomically CLAIM the ticket: flip 'valid' -> 'scanned' in a single
       // statement, scoped to this event when we have one. We only get a row
       // back if WE were the one that flipped it. This:
@@ -132,10 +180,7 @@ const ScanTicketsScreen = () => {
 
       // Case A: we claimed it — first valid scan, let them in.
       if (claimed && claimed.length > 0) {
-        setAttendeeName('Holder');
-        setTicketTier((claimed[0].ticket_tiers as any)?.name || 'General Admission');
-        setScanResult('valid');
-        setTicketCode(''); // Clear manual text field input
+        applyOutcome('valid', (claimed[0].ticket_tiers as any)?.name);
         resetScannerWithDelay();
         return;
       }
@@ -147,22 +192,16 @@ const ScanTicketsScreen = () => {
         .eq('qr_code', cleanCode)
         .maybeSingle();
 
-      const tierName = (existing?.ticket_tiers as any)?.name || 'Event Ticket';
+      const tierName = (existing?.ticket_tiers as any)?.name;
 
       if (!existing) {
-        setScanResult('invalid'); // code not found / not your event (RLS)
+        applyOutcome('invalid'); // code not found / not your event (RLS)
       } else if (eventId && existing.event_id !== eventId) {
-        setAttendeeName('Wrong event');
-        setTicketTier(tierName);
-        setScanResult('invalid'); // real ticket, wrong door
+        applyOutcome('wrong_event', tierName);
       } else if (existing.status === 'scanned' || existing.status === 'used') {
-        setAttendeeName('Already used');
-        setTicketTier(tierName);
-        setScanResult('duplicate'); // someone already came in on this ticket
+        applyOutcome('duplicate', tierName);
       } else {
-        setAttendeeName('Not valid');
-        setTicketTier(tierName);
-        setScanResult('invalid'); // refunded / cancelled / unknown status
+        applyOutcome('invalid', tierName); // refunded / cancelled / unknown
       }
 
       resetScannerWithDelay();

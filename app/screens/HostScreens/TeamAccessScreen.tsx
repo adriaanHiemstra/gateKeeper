@@ -76,12 +76,9 @@ const TeamAccessScreen = () => {
     }
     setGenerating(true);
     try {
-      // Generate format: "123-456"
-      const randomCode =
-        Math.floor(100000 + Math.random() * 900000)
-          .toString()
-          .match(/.{1,3}/g)
-          ?.join("-") || "123-456";
+      // 6-digit code, digits only — staff type this on a number pad at login,
+      // so it must NOT contain a dash (the login input can't produce one).
+      const randomCode = Math.floor(100000 + Math.random() * 900000).toString();
 
       const { error } = await supabase.from("staff_codes").insert({
         event_id: eventId,

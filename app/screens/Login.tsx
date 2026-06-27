@@ -46,6 +46,7 @@ const Login = () => {
   // Staff Modal State
   const [showStaffModal, setShowStaffModal] = useState(false);
   const [staffCode, setStaffCode] = useState("");
+  const [staffLoading, setStaffLoading] = useState(false);
 
   const handleLogin = async () => {
     if (!email || !password) {
@@ -83,14 +84,38 @@ const Login = () => {
     navigation.replace(onboarded ? "Home" : "Onboarding");
   };
 
-  const handleStaffLogin = () => {
-    // Mock verification for staff (can be replaced with API call later)
-    if (staffCode === "882901") {
+  const handleStaffLogin = async () => {
+    const code = staffCode.replace(/\D/g, ""); // digits only
+    if (!code) {
+      Alert.alert("Missing Code", "Enter the code your host gave you.");
+      return;
+    }
+
+    setStaffLoading(true);
+    try {
+      // Validate the code server-side and find out which event it unlocks.
+      const { data, error } = await supabase.functions.invoke("staff-login", {
+        body: { code },
+      });
+
+      if (error || !data?.ok) {
+        Alert.alert("Invalid Code", data?.error ?? "Access denied. Please check your code.");
+        return;
+      }
+
       setShowStaffModal(false);
-      // Navigate DIRECTLY to Scanner
-      navigation.replace("ScanTickets");
-    } else {
-      Alert.alert("Invalid Code", "Access denied. Please check your code.");
+      setStaffCode("");
+      // Scope the scanner to this event and pass the code so each scan is
+      // authorized (staff have no Supabase session of their own).
+      navigation.replace("ScanTickets", {
+        eventId: data.eventId,
+        staffCode: code,
+        eventName: data.eventName,
+      });
+    } catch (e: any) {
+      Alert.alert("Error", e?.message ?? "Could not verify the code. Try again.");
+    } finally {
+      setStaffLoading(false);
     }
   };
 
@@ -260,9 +285,12 @@ const Login = () => {
 
             <TouchableOpacity
               onPress={handleStaffLogin}
+              disabled={staffLoading}
               className="w-full bg-purple-600 py-4 rounded-xl items-center mb-3"
             >
-              <Text className="text-white font-bold text-lg">ENTER</Text>
+              <Text className="text-white font-bold text-lg">
+                {staffLoading ? "CHECKING…" : "ENTER"}
+              </Text>
             </TouchableOpacity>
 
             <TouchableOpacity
