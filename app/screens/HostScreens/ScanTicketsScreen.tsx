@@ -23,19 +23,28 @@ import Animated, {
   withSequence,
   Easing
 } from 'react-native-reanimated';
-import { 
-  X, 
-  Zap, 
-  Keyboard, 
-  CheckCircle, 
-  AlertCircle, 
+import {
+  X,
+  Zap,
+  Keyboard,
+  CheckCircle,
+  AlertCircle,
   ScanLine,
-  Camera as CameraIcon
+  Camera as CameraIcon,
+  WifiOff
 } from 'lucide-react-native';
+import NetInfo from '@react-native-community/netinfo';
 
 // Backend
 import { supabase } from '../../lib/supabase';
 import { RootStackParamList } from '../../types/types';
+import {
+  cacheManifest,
+  validateOffline,
+  flushQueue,
+  getQueueCount,
+  hasManifest,
+} from '../../lib/offlineScan';
 
 // Styles
 import { electricGradient } from '../../styles/colours';
@@ -56,6 +65,11 @@ const ScanTicketsScreen = () => {
   const eventId = route.params?.eventId;
   const staffCode = route.params?.staffCode;
 
+  // Offline check-in only works when we're scoped to a single event (staff
+  // always are; a host is when they open the scanner from Manage Event). A host
+  // scanning globally from the dashboard has no event to pre-download.
+  const cacheEventId = eventId;
+
   // --- Camera Permissions ---
   const [permission, requestPermission] = useCameraPermissions();
 
@@ -63,6 +77,12 @@ const ScanTicketsScreen = () => {
   // A ref flips synchronously (unlike state) so we never start two validations
   // for the same scan while the first await is still in flight.
   const processingRef = useRef(false);
+
+  // --- Offline check-in ---
+  const [isOnline, setIsOnline] = useState(true);
+  const [queueCount, setQueueCount] = useState(0);
+  const [manifestReady, setManifestReady] = useState(false);
+  const syncingRef = useRef(false);
 
   // --- State ---
   const [scanned, setScanned] = useState(false);
@@ -123,14 +143,89 @@ const ScanTicketsScreen = () => {
     }
   };
 
-  // --- 💡 REAL SUPABASE VALIDATION LOGIC ---
+  // Run ONE scan online and return the normalized result. Used for live online
+  // scans AND for replaying the offline queue. Throws on a network error so the
+  // caller can fall back to the cache / stop syncing.
+  const onlineScan = async (
+    cleanCode: string
+  ): Promise<{ result: string; tier?: string }> => {
+    // ---- STAFF PATH ----  (no session → authorize each scan by its code)
+    if (staffCode) {
+      const { data, error } = await supabase.functions.invoke('scan-ticket', {
+        body: { qr_code: cleanCode, code: staffCode },
+      });
+      if (error) throw error;
+      return { result: data?.result ?? 'invalid', tier: data?.tier };
+    }
+
+    // ---- HOST PATH ----  (atomic valid->scanned claim straight on the DB)
+    // We only get a row back if WE won the flip, which admits only 'valid'
+    // tickets, makes double-scan impossible, and avoids a false "valid" when
+    // RLS silently blocks the update.
+    let claim = supabase
+      .from('tickets')
+      .update({ status: 'scanned' })
+      .eq('qr_code', cleanCode)
+      .eq('status', 'valid');
+    if (eventId) claim = claim.eq('event_id', eventId);
+
+    const { data: claimed, error } = await claim.select('id, ticket_tiers ( name )');
+    if (error) throw error;
+    if (claimed && claimed.length > 0) {
+      return { result: 'valid', tier: (claimed[0].ticket_tiers as any)?.name };
+    }
+
+    // Nothing claimed — work out why so we show the right message.
+    const { data: existing } = await supabase
+      .from('tickets')
+      .select('status, event_id, ticket_tiers ( name )')
+      .eq('qr_code', cleanCode)
+      .maybeSingle();
+    const tier = (existing?.ticket_tiers as any)?.name;
+    if (!existing) return { result: 'invalid' };
+    if (eventId && existing.event_id !== eventId) return { result: 'wrong_event', tier };
+    if (existing.status === 'scanned' || existing.status === 'used') {
+      return { result: 'duplicate', tier };
+    }
+    return { result: 'invalid', tier };
+  };
+
+  // Pull the latest ticket list for this event into the offline cache.
+  const refreshManifest = async () => {
+    if (!cacheEventId) return;
+    try {
+      const body = staffCode ? { code: staffCode } : { eventId: cacheEventId };
+      const { data, error } = await supabase.functions.invoke('event-manifest', { body });
+      if (!error && data?.ok && Array.isArray(data.tickets)) {
+        await cacheManifest(cacheEventId, data.tickets);
+        setManifestReady(true);
+      }
+    } catch {
+      // offline / transient — we'll try again on reconnect
+    }
+  };
+
+  // Replay any queued offline check-ins through the server.
+  const syncQueue = async () => {
+    if (!cacheEventId || syncingRef.current) return;
+    syncingRef.current = true;
+    try {
+      const { remaining } = await flushQueue(cacheEventId, (qr) => onlineScan(qr));
+      setQueueCount(remaining);
+    } catch {
+      // still offline; leave the queue untouched
+    } finally {
+      syncingRef.current = false;
+    }
+  };
+
+  // --- 💡 SCAN VALIDATION (online, with offline fallback) ---
   const handleValidateTicket = async (codeToVerify: string) => {
     // NOTE: do NOT uppercase — real codes contain a lowercase UUID
     // (e.g. GK-gk_9b1deb4d...-0), so uppercasing would never match the DB.
     let cleanCode = codeToVerify.trim();
-
     if (cleanCode.startsWith('#')) {
-      cleanCode = cleanCode.substring(1); // Strips the hashtag if it's there
+      cleanCode = cleanCode.substring(1); // strip the display '#'
     }
     if (!cleanCode) {
       Alert.alert('Missing Code', 'Please enter or scan a ticket code.');
@@ -141,72 +236,39 @@ const ScanTicketsScreen = () => {
     processingRef.current = true;
 
     setLoading(true);
-    setScanned(true); // Lock scanner loop
+    setScanned(true); // lock the scanner loop
 
     try {
-      // ---- STAFF PATH ----
-      // No Supabase session, so RLS can't authorize them. The scan-ticket
-      // Edge Function validates the code and does the atomic claim server-side,
-      // locked to the event the code unlocks.
-      if (staffCode) {
-        const { data, error } = await supabase.functions.invoke('scan-ticket', {
-          body: { qr_code: cleanCode, code: staffCode },
-        });
-        if (error) throw error;
-        applyOutcome(data?.result ?? 'invalid', data?.tier);
+      const canOffline = !!cacheEventId;
+
+      // Known offline → validate against the cached manifest and queue the scan.
+      if (!isOnline && canOffline) {
+        const r = await validateOffline(cacheEventId, cleanCode);
+        applyOutcome(r.result, r.tier);
+        setQueueCount(await getQueueCount(cacheEventId));
         resetScannerWithDelay();
         return;
       }
 
-      // ---- HOST PATH ----
-      // Atomically CLAIM the ticket: flip 'valid' -> 'scanned' in a single
-      // statement, scoped to this event when we have one. We only get a row
-      // back if WE were the one that flipped it. This:
-      //   • admits ONLY 'valid' tickets (refunded/cancelled never match)
-      //   • makes double-scan impossible (two doors can't both win the flip)
-      //   • avoids a false "valid" when RLS silently blocks the update
-      let claim = supabase
-        .from('tickets')
-        .update({ status: 'scanned' })
-        .eq('qr_code', cleanCode)
-        .eq('status', 'valid');
-      if (eventId) claim = claim.eq('event_id', eventId);
-
-      const { data: claimed, error } = await claim.select(
-        'id, ticket_tiers ( name )'
-      );
-
-      if (error) throw error;
-
-      // Case A: we claimed it — first valid scan, let them in.
-      if (claimed && claimed.length > 0) {
-        applyOutcome('valid', (claimed[0].ticket_tiers as any)?.name);
-        resetScannerWithDelay();
-        return;
-      }
-
-      // Case B: nothing claimed — look up why so we show the right message.
-      const { data: existing } = await supabase
-        .from('tickets')
-        .select('status, event_id, ticket_tiers ( name )')
-        .eq('qr_code', cleanCode)
-        .maybeSingle();
-
-      const tierName = (existing?.ticket_tiers as any)?.name;
-
-      if (!existing) {
-        applyOutcome('invalid'); // code not found / not your event (RLS)
-      } else if (eventId && existing.event_id !== eventId) {
-        applyOutcome('wrong_event', tierName);
-      } else if (existing.status === 'scanned' || existing.status === 'used') {
-        applyOutcome('duplicate', tierName);
-      } else {
-        applyOutcome('invalid', tierName); // refunded / cancelled / unknown
+      // Online is the source of truth. If the network drops mid-scan, fall back
+      // to the cache so the door keeps moving.
+      try {
+        const r = await onlineScan(cleanCode);
+        applyOutcome(r.result, r.tier);
+        if (canOffline) void syncQueue(); // opportunistic catch-up
+      } catch (netErr) {
+        if (canOffline && (await hasManifest(cacheEventId))) {
+          const r = await validateOffline(cacheEventId, cleanCode);
+          applyOutcome(r.result, r.tier);
+          setQueueCount(await getQueueCount(cacheEventId));
+        } else {
+          throw netErr;
+        }
       }
 
       resetScannerWithDelay();
     } catch (error: any) {
-      Alert.alert('Database Error', error.message || 'Could not check ticket info.');
+      Alert.alert('Scan error', error?.message || 'Could not check the ticket.');
       setScanned(false);
       setScanResult(null);
     } finally {
@@ -221,6 +283,39 @@ const ScanTicketsScreen = () => {
       setScanResult(null);
     }, 3000); // 3 seconds before ready for the next person
   };
+
+  // Offline check-in: prime the cache, flush any queued scans, and watch the
+  // connection so we re-sync the instant we're back online.
+  useEffect(() => {
+    if (!cacheEventId) return;
+    let active = true;
+
+    (async () => {
+      setQueueCount(await getQueueCount(cacheEventId));
+      setManifestReady(await hasManifest(cacheEventId));
+      await refreshManifest();
+      await syncQueue();
+    })();
+
+    const unsub = NetInfo.addEventListener((state) => {
+      // treat unknown (null) as online so we don't false-trip on startup
+      const online =
+        state.isConnected !== false && state.isInternetReachable !== false;
+      if (!active) return;
+      setIsOnline((prev) => {
+        if (online && !prev) {
+          void refreshManifest(); // reconnected → refresh + push queued scans
+          void syncQueue();
+        }
+        return online;
+      });
+    });
+
+    return () => {
+      active = false;
+      unsub();
+    };
+  }, []);
 
   // Triggered when the physical camera reads a QR code
   const handleBarCodeScanned = ({ data }: { data: string }) => {
@@ -323,13 +418,39 @@ const ScanTicketsScreen = () => {
                     </Text>
                 </View>
 
-                <TouchableOpacity 
-                    onPress={() => setFlashMode(!flashMode)} 
+                <TouchableOpacity
+                    onPress={() => setFlashMode(!flashMode)}
                     className={`p-3 rounded-full ${flashMode ? 'bg-yellow-400' : 'bg-black/60'}`}
                 >
                     <Zap color={flashMode ? 'black' : 'white'} size={24} fill={flashMode ? 'black' : 'none'} />
                 </TouchableOpacity>
             </View>
+
+            {/* OFFLINE / SYNC STATUS */}
+            {(!isOnline || queueCount > 0) && (
+                <View className="items-center mt-3 px-6">
+                    <View
+                        className={`flex-row items-center px-4 py-2 rounded-full border ${
+                            !isOnline
+                                ? 'bg-amber-500/20 border-amber-500/40'
+                                : 'bg-black/60 border-white/10'
+                        }`}
+                    >
+                        {!isOnline && <WifiOff color="#fbbf24" size={14} />}
+                        <Text
+                            className={`font-bold text-xs ${!isOnline ? 'text-amber-300 ml-2' : 'text-white'}`}
+                        >
+                            {!isOnline ? 'Offline — scanning from cache' : 'Online'}
+                            {queueCount > 0 ? ` • ${queueCount} to sync` : ''}
+                        </Text>
+                    </View>
+                    {!isOnline && !manifestReady && (
+                        <Text className="text-amber-200/80 text-[11px] mt-1 text-center">
+                            No ticket list cached yet — connect once to enable offline.
+                        </Text>
+                    )}
+                </View>
+            )}
 
             {/* CENTRAL SCANNING ZONE */}
             <View className="items-center justify-center flex-1 relative">
