@@ -33,6 +33,7 @@ import {
   CreditCard,
   Shield,
   MessageCircle,
+  ScanLine,
 } from "lucide-react-native";
 
 // Components & Backend
@@ -299,6 +300,11 @@ const ManageEventScreen = () => {
                   icon={<Shield color="white" size={24} />}
                   label="Team Access"
                   onPress={() => navigation.navigate("TeamAccess", { eventId })}
+                />
+                <ManagementAction
+                  icon={<ScanLine color="white" size={24} />}
+                  label="Scan Tickets"
+                  onPress={() => navigation.navigate("ScanTickets", { eventId })}
                 />
               </View>
               <View className="flex-row gap-4 mb-8">
