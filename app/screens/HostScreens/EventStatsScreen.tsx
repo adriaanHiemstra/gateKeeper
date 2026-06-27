@@ -368,8 +368,8 @@ const fetchAnalytics = async () => {
                 icon={<TrendingUp color="#FACC15" size={20} />}
               />
               <StatCard
-                label="Visits"
-                value={selectedEvent.visits}
+                label="Checked In"
+                value={`${selectedEvent.visits ?? 0} / ${selectedEvent.ticketsSold ?? 0}`}
                 change="0%"
                 icon={<Users color="#60A5FA" size={20} />}
               />
