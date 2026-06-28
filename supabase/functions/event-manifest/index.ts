@@ -55,10 +55,10 @@ Deno.serve(async (req) => {
       authorizedEventId = eventId;
     }
 
-    // 2. Pull every ticket for that event.
+    // 2. Pull every ticket for that event (+ buyer name for the door).
     const { data: rows, error } = await admin
       .from("tickets")
-      .select("qr_code, status, ticket_tiers ( name )")
+      .select("qr_code, status, ticket_tiers ( name ), profiles ( full_name, username )")
       .eq("event_id", authorizedEventId);
     if (error) return reply({ ok: false, error: "Could not load tickets." });
 
@@ -66,6 +66,7 @@ Deno.serve(async (req) => {
       qr_code: t.qr_code,
       status: t.status,
       tier: (t.ticket_tiers as any)?.name ?? "Event Ticket",
+      name: (t.profiles as any)?.full_name ?? (t.profiles as any)?.username ?? "Guest",
     }));
 
     return reply({ ok: true, eventId: authorizedEventId, tickets });

@@ -116,16 +116,16 @@ const ScanTicketsScreen = () => {
 
   // Map a normalized outcome to the on-screen banner. Shared by both the host
   // (direct DB) path and the staff (Edge Function) path so they look identical.
-  const applyOutcome = (outcome: string, tier?: string) => {
+  const applyOutcome = (outcome: string, tier?: string, name?: string) => {
     switch (outcome) {
       case 'valid':
-        setAttendeeName('Holder');
+        setAttendeeName(name || 'Guest');
         setTicketTier(tier || 'General Admission');
         setScanResult('valid');
         setTicketCode(''); // clear manual entry field
         break;
       case 'duplicate':
-        setAttendeeName('Already used');
+        setAttendeeName(name || 'Already used');
         setTicketTier(tier || 'Event Ticket');
         setScanResult('duplicate');
         break;
@@ -148,20 +148,24 @@ const ScanTicketsScreen = () => {
   // caller can fall back to the cache / stop syncing.
   const onlineScan = async (
     cleanCode: string
-  ): Promise<{ result: string; tier?: string }> => {
+  ): Promise<{ result: string; tier?: string; name?: string }> => {
     // ---- STAFF PATH ----  (no session → authorize each scan by its code)
     if (staffCode) {
       const { data, error } = await supabase.functions.invoke('scan-ticket', {
         body: { qr_code: cleanCode, code: staffCode },
       });
       if (error) throw error;
-      return { result: data?.result ?? 'invalid', tier: data?.tier };
+      return { result: data?.result ?? 'invalid', tier: data?.tier, name: data?.name };
     }
 
     // ---- HOST PATH ----  (atomic valid->scanned claim straight on the DB)
     // We only get a row back if WE won the flip, which admits only 'valid'
     // tickets, makes double-scan impossible, and avoids a false "valid" when
     // RLS silently blocks the update.
+    const buyerName = (row: any) =>
+      row?.profiles?.full_name ?? row?.profiles?.username ?? 'Guest';
+    const cols = 'id, ticket_tiers ( name ), profiles ( full_name, username )';
+
     let claim = supabase
       .from('tickets')
       .update({ status: 'scanned' })
@@ -169,25 +173,30 @@ const ScanTicketsScreen = () => {
       .eq('status', 'valid');
     if (eventId) claim = claim.eq('event_id', eventId);
 
-    const { data: claimed, error } = await claim.select('id, ticket_tiers ( name )');
+    const { data: claimed, error } = await claim.select(cols);
     if (error) throw error;
     if (claimed && claimed.length > 0) {
-      return { result: 'valid', tier: (claimed[0].ticket_tiers as any)?.name };
+      return {
+        result: 'valid',
+        tier: (claimed[0].ticket_tiers as any)?.name,
+        name: buyerName(claimed[0]),
+      };
     }
 
     // Nothing claimed — work out why so we show the right message.
     const { data: existing } = await supabase
       .from('tickets')
-      .select('status, event_id, ticket_tiers ( name )')
+      .select('status, event_id, ticket_tiers ( name ), profiles ( full_name, username )')
       .eq('qr_code', cleanCode)
       .maybeSingle();
     const tier = (existing?.ticket_tiers as any)?.name;
+    const name = buyerName(existing);
     if (!existing) return { result: 'invalid' };
-    if (eventId && existing.event_id !== eventId) return { result: 'wrong_event', tier };
+    if (eventId && existing.event_id !== eventId) return { result: 'wrong_event', tier, name };
     if (existing.status === 'scanned' || existing.status === 'used') {
-      return { result: 'duplicate', tier };
+      return { result: 'duplicate', tier, name };
     }
-    return { result: 'invalid', tier };
+    return { result: 'invalid', tier, name };
   };
 
   // Pull the latest ticket list for this event into the offline cache.
@@ -244,7 +253,7 @@ const ScanTicketsScreen = () => {
       // Known offline → validate against the cached manifest and queue the scan.
       if (!isOnline && canOffline) {
         const r = await validateOffline(cacheEventId, cleanCode);
-        applyOutcome(r.result, r.tier);
+        applyOutcome(r.result, r.tier, r.name);
         setQueueCount(await getQueueCount(cacheEventId));
         resetScannerWithDelay();
         return;
@@ -254,12 +263,12 @@ const ScanTicketsScreen = () => {
       // to the cache so the door keeps moving.
       try {
         const r = await onlineScan(cleanCode);
-        applyOutcome(r.result, r.tier);
+        applyOutcome(r.result, r.tier, r.name);
         if (canOffline) void syncQueue(); // opportunistic catch-up
       } catch (netErr) {
         if (canOffline && (await hasManifest(cacheEventId))) {
           const r = await validateOffline(cacheEventId, cleanCode);
-          applyOutcome(r.result, r.tier);
+          applyOutcome(r.result, r.tier, r.name);
           setQueueCount(await getQueueCount(cacheEventId));
         } else {
           throw netErr;
@@ -405,8 +414,14 @@ const ScanTicketsScreen = () => {
         >
             {/* HEADER */}
             <View className="flex-row justify-between items-center px-6 pt-4">
-                <TouchableOpacity 
-                    onPress={() => navigation.goBack()} 
+                <TouchableOpacity
+                    onPress={() =>
+                      // Staff arrived via replace() with no screen to go back to,
+                      // so send them cleanly back to the login screen.
+                      staffCode
+                        ? navigation.reset({ index: 0, routes: [{ name: 'Login' as never }] })
+                        : navigation.goBack()
+                    }
                     className="bg-black/60 p-3 rounded-full"
                 >
                     <X color="white" size={24} />

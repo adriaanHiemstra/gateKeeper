@@ -34,7 +34,7 @@ const TicketDisplayScreen = () => {
   const {
     eventId,
     eventTitle = "Event Name",
-    ticketId = "#GK-882910",
+    ticketId,
     eventImage,
     eventLocation,
     eventTime,
@@ -42,9 +42,13 @@ const TicketDisplayScreen = () => {
     ticketPrice,
   } = route.params || {};
 
-  // 🚨 CLEANUP: Strip out the display '#' symbol so the visual QR code only 
-  // encodes the exact database matching string (e.g., 'GK-882910')
-  const cleanTicketCode = ticketId.startsWith('#') ? ticketId.slice(1) : ticketId;
+  // 🚨 CLEANUP: Strip the display '#' so the QR encodes the exact code stored in
+  // the DB. If there's no real code, we render no QR rather than a fake one.
+  const cleanTicketCode = ticketId
+    ? ticketId.startsWith("#")
+      ? ticketId.slice(1)
+      : ticketId
+    : null;
 
   const handleViewEvent = () => {
     if (!eventId) {
@@ -106,7 +110,8 @@ const TicketDisplayScreen = () => {
           </Text>
 
           <Text className="text-gray-400 text-base mb-8 font-medium tracking-wider">
-            ID: {ticketId} • {ticketPrice ? `R${ticketPrice}` : ""}
+            {cleanTicketCode ? `ID: ${ticketId} • ` : ""}
+            {ticketPrice ? `R${ticketPrice}` : ""}
           </Text>
 
           {/* QR Code Card */}
@@ -115,12 +120,18 @@ const TicketDisplayScreen = () => {
             className="bg-white rounded-3xl items-center justify-center shadow-2xl shadow-black/80 mb-8 p-4"
             style={{ width: QR_SIZE, height: QR_SIZE }}
           >
-            <QRCode
-              value={cleanTicketCode}
-              size={QR_SIZE - 40}
-              backgroundColor="white"
-              color="black"
-            />
+            {cleanTicketCode ? (
+              <QRCode
+                value={cleanTicketCode}
+                size={QR_SIZE - 40}
+                backgroundColor="white"
+                color="black"
+              />
+            ) : (
+              <Text className="text-gray-500 text-center px-6 font-medium">
+                Ticket code unavailable.{"\n"}Find this ticket in My Tickets.
+              </Text>
+            )}
           </View>
 
           <Text

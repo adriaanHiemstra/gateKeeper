@@ -23,9 +23,10 @@ export interface ManifestRow {
   qr_code: string;
   status: string; // 'valid' | 'scanned' | 'refunded' | ...
   tier?: string;
+  name?: string;
 }
 
-type TicketMap = Record<string, { status: string; tier?: string }>;
+type TicketMap = Record<string, { status: string; tier?: string; name?: string }>;
 interface QueuedScan {
   qr_code: string;
   scanned_at: string;
@@ -48,7 +49,7 @@ async function readJson<T>(key: string, fallback: T): Promise<T> {
 // refresh from the server.
 export async function cacheManifest(eventId: string, rows: ManifestRow[]): Promise<void> {
   const map: TicketMap = {};
-  for (const r of rows) map[r.qr_code] = { status: r.status, tier: r.tier };
+  for (const r of rows) map[r.qr_code] = { status: r.status, tier: r.tier, name: r.name };
 
   const queue = await readJson<QueuedScan[]>(queueKey(eventId), []);
   for (const q of queue) {
@@ -67,16 +68,16 @@ export async function hasManifest(eventId: string): Promise<boolean> {
 export async function validateOffline(
   eventId: string,
   qrRaw: string
-): Promise<{ result: ScanOutcome; tier?: string }> {
+): Promise<{ result: ScanOutcome; tier?: string; name?: string }> {
   const qr = qrRaw.trim().replace(/^#/, "");
   const map = await readJson<TicketMap>(ticketsKey(eventId), {});
   const entry = map[qr];
 
   // Not in this event's manifest → we can't vouch for it offline.
   if (!entry) return { result: "invalid" };
-  if (entry.status === "refunded") return { result: "invalid", tier: entry.tier };
+  if (entry.status === "refunded") return { result: "invalid", tier: entry.tier, name: entry.name };
   if (entry.status === "scanned" || entry.status === "used") {
-    return { result: "duplicate", tier: entry.tier };
+    return { result: "duplicate", tier: entry.tier, name: entry.name };
   }
 
   // Claim it locally and queue the check-in for sync.
@@ -88,7 +89,7 @@ export async function validateOffline(
   queue.push({ qr_code: qr, scanned_at: new Date().toISOString() });
   await AsyncStorage.setItem(queueKey(eventId), JSON.stringify(queue));
 
-  return { result: "valid", tier: entry.tier };
+  return { result: "valid", tier: entry.tier, name: entry.name };
 }
 
 export async function getQueueCount(eventId: string): Promise<number> {
