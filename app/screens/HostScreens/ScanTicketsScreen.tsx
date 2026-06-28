@@ -414,8 +414,14 @@ const ScanTicketsScreen = () => {
         >
             {/* HEADER */}
             <View className="flex-row justify-between items-center px-6 pt-4">
-                <TouchableOpacity 
-                    onPress={() => navigation.goBack()} 
+                <TouchableOpacity
+                    onPress={() =>
+                      // Staff arrived via replace() with no screen to go back to,
+                      // so send them cleanly back to the login screen.
+                      staffCode
+                        ? navigation.reset({ index: 0, routes: [{ name: 'Login' as never }] })
+                        : navigation.goBack()
+                    }
                     className="bg-black/60 p-3 rounded-full"
                 >
                     <X color="white" size={24} />
