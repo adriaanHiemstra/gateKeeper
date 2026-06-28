@@ -38,18 +38,20 @@ Deno.serve(async (req) => {
       .maybeSingle();
     if (!sc) return reply({ result: "unauthorized" });
 
-    // 2. Find the ticket by its code.
+    // 2. Find the ticket by its code (with the buyer's name for the door).
     const { data: ticket } = await admin
       .from("tickets")
-      .select("id, event_id, status, ticket_tiers ( name )")
+      .select("id, event_id, status, ticket_tiers ( name ), profiles ( full_name, username )")
       .eq("qr_code", cleanQr)
       .maybeSingle();
     if (!ticket) return reply({ result: "invalid" });
 
     const tier = (ticket.ticket_tiers as any)?.name ?? "Event Ticket";
+    const name =
+      (ticket.profiles as any)?.full_name ?? (ticket.profiles as any)?.username ?? "Guest";
 
     // 3. The ticket must belong to the event this code is for.
-    if (ticket.event_id !== sc.event_id) return reply({ result: "wrong_event", tier });
+    if (ticket.event_id !== sc.event_id) return reply({ result: "wrong_event", tier, name });
 
     // 4. Atomically claim it: flip 'valid' -> 'scanned'. A row comes back only
     //    if we won the flip, so two doors can't both admit the same ticket.
@@ -60,13 +62,13 @@ Deno.serve(async (req) => {
       .eq("status", "valid")
       .select("id");
 
-    if (claimed && claimed.length > 0) return reply({ result: "valid", tier });
+    if (claimed && claimed.length > 0) return reply({ result: "valid", tier, name });
 
     // 5. Didn't claim it — say why.
     if (ticket.status === "scanned" || ticket.status === "used") {
-      return reply({ result: "duplicate", tier });
+      return reply({ result: "duplicate", tier, name });
     }
-    return reply({ result: "invalid", tier }); // refunded / cancelled / etc.
+    return reply({ result: "invalid", tier, name }); // refunded / cancelled / etc.
   } catch (err) {
     return reply({ result: "error", error: (err as Error).message ?? "Unexpected error." });
   }

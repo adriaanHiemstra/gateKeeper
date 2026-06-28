@@ -50,6 +50,10 @@ const PurchaseTicketScreen = () => {
 
   const [tickets, setTickets] = useState<any[]>([]);
 
+  // Live commission config so the preview total matches what the server charges.
+  // pct = percent, flat = rand per ticket. Defaults mirror platform_settings.
+  const [feeCfg, setFeeCfg] = useState({ pct: 6, flat: 2 });
+
   // 2. FETCH DATA IF MISSING
   useEffect(() => {
     if (!eventId) {
@@ -59,7 +63,32 @@ const PurchaseTicketScreen = () => {
     }
 
     loadData();
+    loadFeeConfig();
   }, [eventId]);
+
+  // Pull the real fee rates: a per-event override wins, else the platform
+  // default. Exactly the precedence initialize-transaction uses server-side.
+  const loadFeeConfig = async () => {
+    try {
+      const [{ data: ev }, { data: settings }] = await Promise.all([
+        supabase
+          .from("events")
+          .select("commission_pct, commission_flat")
+          .eq("id", eventId)
+          .maybeSingle(),
+        supabase
+          .from("platform_settings")
+          .select("default_commission_pct, default_commission_flat")
+          .eq("id", 1)
+          .maybeSingle(),
+      ]);
+      const pct = Number(ev?.commission_pct ?? settings?.default_commission_pct ?? 6);
+      const flatCents = Number(ev?.commission_flat ?? settings?.default_commission_flat ?? 200);
+      setFeeCfg({ pct, flat: flatCents / 100 });
+    } catch {
+      // keep the 6% + R2 default if config can't be read
+    }
+  };
 
   const loadData = async () => {
     // A. USE PASSED DATA (If available)
@@ -121,11 +150,11 @@ const PurchaseTicketScreen = () => {
     }
   };
 
-  // Buyer-pays booking fee: 6% + R2 per ticket. This MUST mirror the maths in
-  // the initialize-transaction Edge Function so the preview matches the charge.
+  // Buyer-pays booking fee: pct% + flat per ticket, read from feeCfg so it
+  // mirrors the initialize-transaction Edge Function (incl. per-event overrides).
   const ticketCount = tickets.reduce((acc, t) => acc + t.quantity, 0);
   const subtotal = tickets.reduce((acc, t) => acc + t.price * t.quantity, 0);
-  const fees = subtotal * 0.06 + 2 * ticketCount;
+  const fees = subtotal * (feeCfg.pct / 100) + feeCfg.flat * ticketCount;
   const total = subtotal + fees;
 
   const updateQuantity = (id: string, change: number) => {
@@ -181,19 +210,34 @@ const PurchaseTicketScreen = () => {
         { body: { reference: init.reference } }
       );
 
-      if (verify?.ok && verify.status === "success") {
-        // Grab one of the freshly-minted tickets to show on the next screen.
-        const { data: minted } = await supabase
-          .from("tickets")
-          .select("qr_code, ticket_tiers ( name )")
-          .eq("payment_reference", init.reference)
-          .limit(1)
-          .maybeSingle();
+      // The minted ticket is the real proof of purchase. Look for it — briefly
+      // polling in case the webhook is still finishing the mint — before
+      // deciding what to show, so we never flash an error on a paid order.
+      const findTicket = async () =>
+        (
+          await supabase
+            .from("tickets")
+            .select("qr_code, ticket_tiers ( name )")
+            .eq("payment_reference", init.reference)
+            .limit(1)
+            .maybeSingle()
+        ).data;
 
+      let minted = await findTicket();
+      const clearlyFailed =
+        verify?.status === "failed" || verify?.status === "abandoned";
+      if (!minted && !clearlyFailed) {
+        for (let i = 0; i < 3 && !minted; i++) {
+          await new Promise((r) => setTimeout(r, 1500));
+          minted = await findTicket();
+        }
+      }
+
+      if (minted) {
         navigation.navigate("TicketDisplay", {
           eventId: eventId,
           eventTitle: eventDetails.name,
-          ticketId: minted?.qr_code ? `#${minted.qr_code}` : undefined,
+          ticketId: minted.qr_code ? `#${minted.qr_code}` : undefined,
           eventImage: eventDetails.banner,
           eventLocation: eventDetails.location,
           eventTime: eventDetails.time,
@@ -201,10 +245,15 @@ const PurchaseTicketScreen = () => {
             (minted as any)?.ticket_tiers?.name ?? purchasedTiers[0].name,
           ticketPrice: total.toFixed(2),
         });
-      } else {
+      } else if (clearlyFailed) {
         Alert.alert(
           "Payment not completed",
-          "If you were charged, your tickets will appear in My Tickets shortly."
+          "Your payment didn't go through, so no tickets were issued — you weren't charged."
+        );
+      } else {
+        Alert.alert(
+          "Almost there",
+          "We're still confirming your payment. If you were charged, your tickets will appear in My Tickets shortly."
         );
       }
     } catch (error: any) {

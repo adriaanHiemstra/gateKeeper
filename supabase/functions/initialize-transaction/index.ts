@@ -82,6 +82,49 @@ Deno.serve(async (req) => {
     }
     if (ticketCount === 0) return reply({ ok: false, error: "No valid tickets selected." });
 
+    // 3b. Free up capacity held by checkouts that were started but never paid
+    //     (browser closed, app killed). Anything still 'pending' after 20 min is
+    //     treated as abandoned so its seats go back on sale.
+    const staleCutoff = new Date(Date.now() - 20 * 60 * 1000).toISOString();
+    const { data: stale } = await admin
+      .from("transactions")
+      .select("id, cart")
+      .eq("event_id", eventId)
+      .eq("status", "pending")
+      .lt("created_at", staleCutoff);
+    for (const s of stale ?? []) {
+      for (const item of s.cart as Array<{ tier_id: string; quantity: number }>) {
+        await admin.rpc("release_tier", { p_tier_id: item.tier_id, p_qty: item.quantity });
+      }
+      await admin.from("transactions").update({ status: "expired" }).eq("id", s.id);
+    }
+
+    // 3c. Reserve the seats NOW (atomic per tier) so nothing oversells while the
+    //     buyer is on the Paystack page. Roll back if any tier is short.
+    const reserved: Array<{ tier_id: string; quantity: number }> = [];
+    const releaseReserved = async () => {
+      for (const r of reserved) {
+        await admin.rpc("release_tier", { p_tier_id: r.tier_id, p_qty: r.quantity });
+      }
+    };
+    for (const line of safeCart) {
+      const { data: ok, error: rpcErr } = await admin.rpc("reserve_tier", {
+        p_tier_id: line.tier_id,
+        p_qty: line.quantity,
+      });
+      // If the capacity functions aren't installed yet (phase 10 not run),
+      // don't block sales — enforcement switches on automatically once they are.
+      if (rpcErr) break;
+      if (!ok) {
+        await releaseReserved();
+        return reply({
+          ok: false,
+          error: `Sorry — "${line.name}" doesn't have ${line.quantity} ticket(s) left.`,
+        });
+      }
+      reserved.push({ tier_id: line.tier_id, quantity: line.quantity });
+    }
+
     // 4. Commission = pct + flat-per-ticket (event override → platform default).
     const { data: settings } = await admin
       .from("platform_settings")
@@ -105,7 +148,10 @@ Deno.serve(async (req) => {
       subaccount_code: host.paystack_subaccount_code,
       cart: safeCart,
     });
-    if (txnErr) return reply({ ok: false, error: "Couldn't start checkout. Try again." });
+    if (txnErr) {
+      await releaseReserved();
+      return reply({ ok: false, error: "Couldn't start checkout. Try again." });
+    }
 
     // 6. Initialize the Paystack transaction with the split.
     //    transaction_charge = our flat cut off the top; bearer "account" means the
@@ -129,6 +175,7 @@ Deno.serve(async (req) => {
     });
     const psData = await psRes.json();
     if (!psRes.ok || !psData.status) {
+      await releaseReserved();
       await admin.from("transactions").update({ status: "failed" }).eq("reference", reference);
       return reply({ ok: false, error: psData.message ?? "Could not start payment." });
     }
