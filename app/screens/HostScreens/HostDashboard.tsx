@@ -375,11 +375,6 @@ const HostDashboard = () => {
                 onPress={() => navigation.navigate("CreateEvent")}
               />
               <ActionButton
-                icon={<QrCode color="#D087FF" size={28} />}
-                label="Scan Tickets"
-                onPress={() => console.log("Scan Tickets")}
-              />
-              <ActionButton
                 icon={<Ticket color="#D087FF" size={28} />}
                 label="My Events"
                 onPress={() => navigation.navigate("MyEventsList")}
