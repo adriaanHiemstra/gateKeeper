@@ -56,10 +56,11 @@ const MyTicketsScreen = () => {
         .select(
           `
           id,
-          event_id, 
+          event_id,
           qr_code,
           status,
           purchased_at,
+          payment_reference,
           events (
             title,
             date,
@@ -112,6 +113,7 @@ const MyTicketsScreen = () => {
             eventId: item.event_id, // ✅ FIX: Added this so the button works
             eventTitle: eventTitle,
             ticketId: `${item.qr_code}`,
+            paymentReference: item.payment_reference,
             eventImage: imageSource,
             eventLocation: eventLoc,
             eventTime: `${eventDate} • ${eventTime}`,
