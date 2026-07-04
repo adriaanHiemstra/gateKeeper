@@ -402,17 +402,20 @@ const Onboarding = () => {
         await supabase.from("user_interests").upsert(interestInserts);
       }
 
-      // Update Friendships
+      // Send friend REQUESTS (not instant friendships). Each person must approve
+      // before either of you can see the other's activity. This is what stops
+      // contact sync from silently cross-linking accounts (the bug where
+      // accounts made on one phone all befriended each other).
       const finalFriendsToSync = matchedContacts
         .filter((c) => c.isSelected)
         .map((c) => c.id);
 
       if (finalFriendsToSync.length > 0) {
-        const friendshipInserts = finalFriendsToSync.map((friendId) => ({
-          user_id_1: user.id,
-          user_id_2: friendId,
-        }));
-        await supabase.from("friendships").insert(friendshipInserts);
+        await Promise.all(
+          finalFriendsToSync.map((friendId) =>
+            supabase.rpc("request_friend", { target: friendId })
+          )
+        );
       }
 
       navigation.replace("Home");
@@ -696,7 +699,7 @@ const Onboarding = () => {
                 </Text>
                 <Text className="text-gray-400 text-lg mb-8">
                   We found {matchedContacts.length} people from your contacts.
-                  Choose who to add.
+                  Choose who to send a friend request.
                 </Text>
 
                 <View className="bg-white/5 border border-white/10 rounded-3xl p-2 mb-8">
@@ -814,7 +817,7 @@ const Onboarding = () => {
                       style={{ fontFamily: "Jost-Medium" }}
                     >
                       {selectedCount > 0
-                        ? `ADD ${selectedCount} FRIENDS`
+                        ? `REQUEST ${selectedCount} ${selectedCount === 1 ? "FRIEND" : "FRIENDS"}`
                         : "FINISH"}
                     </Text>
                     <ArrowRight color="white" size={24} />
