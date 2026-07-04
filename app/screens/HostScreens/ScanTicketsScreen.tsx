@@ -37,6 +37,7 @@ import NetInfo from '@react-native-community/netinfo';
 
 // Backend
 import { supabase } from '../../lib/supabase';
+import { useAuth } from '../../context/AuthContext';
 import { RootStackParamList } from '../../types/types';
 import {
   cacheManifest,
@@ -54,6 +55,7 @@ const SCAN_SIZE = width * 0.7;
 
 const ScanTicketsScreen = () => {
   const navigation = useNavigation();
+  const { user } = useAuth();
 
   // Two ways in:
   //  • Host (authenticated): scans straight against the DB; RLS keeps them to
@@ -186,13 +188,24 @@ const ScanTicketsScreen = () => {
     // Nothing claimed — work out why so we show the right message.
     const { data: existing } = await supabase
       .from('tickets')
-      .select('status, event_id, ticket_tiers ( name ), profiles ( full_name, username )')
+      .select(
+        'status, event_id, ticket_tiers ( name ), profiles ( full_name, username ), events ( host_id )'
+      )
       .eq('qr_code', cleanCode)
       .maybeSingle();
     const tier = (existing?.ticket_tiers as any)?.name;
     const name = buyerName(existing);
     if (!existing) return { result: 'invalid' };
     if (eventId && existing.event_id !== eventId) return { result: 'wrong_event', tier, name };
+
+    // We can only trust this ticket's status once we know we host its event.
+    // RLS can still let us read a ticket for an unrelated reason (e.g. it's
+    // our own purchased ticket to someone else's event), and without this
+    // check that would leak "already used" + the holder's name for an event
+    // we have no business scanning.
+    const hostsThisEvent = (existing.events as any)?.host_id === user?.id;
+    if (!hostsThisEvent) return { result: 'invalid' };
+
     if (existing.status === 'scanned' || existing.status === 'used') {
       return { result: 'duplicate', tier, name };
     }

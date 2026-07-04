@@ -238,6 +238,7 @@ const PurchaseTicketScreen = () => {
           eventId: eventId,
           eventTitle: eventDetails.name,
           ticketId: minted.qr_code ? `#${minted.qr_code}` : undefined,
+          paymentReference: init.reference,
           eventImage: eventDetails.banner,
           eventLocation: eventDetails.location,
           eventTime: eventDetails.time,

@@ -54,6 +54,9 @@ export type RootStackParamList = {
     eventId: string;
     eventTitle: string;
     ticketId?: string;
+    // When set, the screen fetches every ticket sharing this payment
+    // reference and lets the user swipe between them (multi-ticket orders).
+    paymentReference?: string;
     eventImage?: any;
     eventLocation?: string;
     eventTime?: string;
