@@ -60,6 +60,20 @@ Deno.serve(async (req) => {
       });
     }
 
+    // Payout hold (phase 13, see docs/payout-hold-spec.md): a 'held' host is NOT
+    // split at purchase — the platform collects everything and pays the host
+    // after the event via release-event-payout. Queried separately and
+    // fail-open so this is a no-op until the phase13 schema exists.
+    let heldMode = false;
+    {
+      const { data: tier, error: tierErr } = await admin
+        .from("profiles")
+        .select("payout_mode")
+        .eq("id", event.host_id)
+        .maybeSingle();
+      heldMode = !tierErr && tier?.payout_mode === "held";
+    }
+
     // 3. Authoritative prices straight from the DB (never trust the client).
     const tierIds = cart.map((c: { tier_id: string }) => c.tier_id);
     const { data: tiers } = await admin
@@ -147,6 +161,10 @@ Deno.serve(async (req) => {
       platform_fee: feeCents,
       subaccount_code: host.paystack_subaccount_code,
       cart: safeCart,
+      // Held orders record what we owe the host (face value) for the release.
+      ...(heldMode
+        ? { settlement_mode: "held", host_amount: subtotalCents }
+        : {}),
     });
     if (txnErr) {
       await releaseReserved();
@@ -167,9 +185,16 @@ Deno.serve(async (req) => {
         amount: totalCents,
         currency: "ZAR",
         reference,
-        subaccount: host.paystack_subaccount_code,
-        transaction_charge: feeCents,
-        bearer: "account",
+        // Instant mode: split at purchase (host's share → their subaccount,
+        // platform bears the processing fee). Held mode: no split — everything
+        // settles to the platform, and the host is paid post-event.
+        ...(heldMode
+          ? {}
+          : {
+              subaccount: host.paystack_subaccount_code,
+              transaction_charge: feeCents,
+              bearer: "account",
+            }),
         metadata: { user_id: user.id, event_id: eventId },
       }),
     });
@@ -178,6 +203,15 @@ Deno.serve(async (req) => {
       await releaseReserved();
       await admin.from("transactions").update({ status: "failed" }).eq("reference", reference);
       return reply({ ok: false, error: psData.message ?? "Could not start payment." });
+    }
+
+    // First held sale flips the event into the holding lifecycle (idempotent).
+    if (heldMode) {
+      await admin
+        .from("events")
+        .update({ payout_mode: "held", payout_status: "holding" })
+        .eq("id", eventId)
+        .is("payout_status", null);
     }
 
     return reply({
