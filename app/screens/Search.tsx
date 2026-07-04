@@ -44,6 +44,7 @@ import BottomNav from "../components/BottomNav";
 import EventFeedCard from "../components/EventFeedCard";
 import { bannerGradient, fireGradient } from "../styles/colours";
 import { supabase } from "../lib/supabase";
+import { notEndedFilter } from "../lib/eventFilters";
 
 const { width } = Dimensions.get("window");
 const ITEM_WIDTH = width / 2;
@@ -240,14 +241,14 @@ const SearchScreen = () => {
   const fetchEvents = useCallback(async () => {
     setLoading(true);
     try {
-      const now = new Date().toISOString();
-
       let dbQuery = supabase
         .from("events")
         .select(
           `*, profiles:host_id ( username, avatar_url ), venues:venue_id ( name, address )`,
         )
-        .gte("date", now)
+        // An event stays searchable (and therefore buyable) for its whole
+        // run, not just until it starts.
+        .or(notEndedFilter())
         .eq("is_public", true);
 
       // A. TEXT SEARCH

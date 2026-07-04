@@ -277,6 +277,19 @@ const fetchEventData = async () => {
 
       if (error) throw error;
 
+      // Belt-and-braces: ManageEventScreen already hides the entry point for
+      // a past event, but guard here too in case this screen is reached
+      // directly (deep link, back-stack, stale nav state) — otherwise a host
+      // could still push the date into the future and revive a finished event.
+      if (new Date(data.date) < new Date()) {
+        Alert.alert(
+          "Event Ended",
+          "This event has already happened, so its details can no longer be edited."
+        );
+        navigation.goBack();
+        return;
+      }
+
       setTitle(data.title);
       setDescription(data.description);
 

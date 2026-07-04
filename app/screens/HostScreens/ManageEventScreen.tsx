@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
+  Alert,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
@@ -55,6 +56,10 @@ const ManageEventScreen = () => {
 
   const [loading, setLoading] = useState(true);
   const [eventTitle, setEventTitle] = useState("Loading...");
+  // Once an event's date has passed, its details are locked — editing them
+  // would let a host silently rewrite what guests already bought a ticket to,
+  // or push the date into the future to "revive" a finished event.
+  const [isPastEvent, setIsPastEvent] = useState(false);
 
   // Stats
   const [stats, setStats] = useState({
@@ -106,8 +111,8 @@ const ManageEventScreen = () => {
     try {
       // ⚡️ PERFORMANCE: Promise.all fetches everything in parallel
       const [eventRes, tiersRes, salesRes] = await Promise.all([
-        // 1. Get Title
-        supabase.from("events").select("title").eq("id", eventId).single(),
+        // 1. Get Title (+ date, to know if this event has already happened)
+        supabase.from("events").select("title, date").eq("id", eventId).single(),
 
         // 2. Get Tiers (Capacity)
         supabase.from("ticket_tiers").select("*").eq("event_id", eventId),
@@ -125,6 +130,7 @@ const ManageEventScreen = () => {
       // Note: salesRes might be empty if no tickets sold, which is fine.
 
       setEventTitle(eventRes.data.title);
+      setIsPastEvent(new Date(eventRes.data.date) < new Date());
 
       // Process Data
       const ticketData = salesRes.data || [];
@@ -175,10 +181,13 @@ const ManageEventScreen = () => {
     }
   };
 
-  const ManagementAction = ({ icon, label, onPress }: any) => (
+  const ManagementAction = ({ icon, label, onPress, disabled }: any) => (
     <TouchableOpacity
       onPress={onPress}
-      className="bg-white/10 border border-white/5 p-4 rounded-2xl items-center justify-center flex-1"
+      activeOpacity={disabled ? 1 : 0.7}
+      className={`bg-white/10 border border-white/5 p-4 rounded-2xl items-center justify-center flex-1 ${
+        disabled ? "opacity-40" : ""
+      }`}
     >
       <View className="mb-3 bg-white/10 p-3 rounded-full">{icon}</View>
       <Text
@@ -285,7 +294,17 @@ const ManageEventScreen = () => {
                 <ManagementAction
                   icon={<Edit3 color="white" size={24} />}
                   label="Edit Details"
-                  onPress={() => navigation.navigate("EditEvent", { eventId })}
+                  disabled={isPastEvent}
+                  onPress={() => {
+                    if (isPastEvent) {
+                      Alert.alert(
+                        "Event Ended",
+                        "This event has already happened, so its details can no longer be edited."
+                      );
+                      return;
+                    }
+                    navigation.navigate("EditEvent", { eventId });
+                  }}
                 />
                 <ManagementAction
                   icon={<ImagePlus color="white" size={24} />}
