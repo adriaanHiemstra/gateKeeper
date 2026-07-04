@@ -27,6 +27,7 @@ import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { supabase } from "../lib/supabase";
 import { rankEvents } from "../lib/feedAlgorithm";
 import { trackEventInteraction } from "../lib/interactions";
+import { notEndedFilter } from "../lib/eventFilters";
 import { RootStackParamList } from "../types/types";
 
 // How many items we pull per refresh. FlatList virtualizes rendering, so a
@@ -82,7 +83,7 @@ const HomeScreen = () => {
       const {
         data: { user },
       } = await supabase.auth.getUser();
-      const nowIso = new Date().toISOString();
+      const now = new Date();
 
       // Fetch the building blocks in parallel for speed.
       const [eventsRes, updatesRes, profileRes, friendsRes] = await Promise.all([
@@ -92,7 +93,9 @@ const HomeScreen = () => {
             `*, profiles:host_id ( username, avatar_url ), ticket_tiers (*)`,
           )
           .eq("is_public", true)
-          .gte("date", nowIso)
+          // An event stays in the feed (and therefore buyable) for its whole
+          // run, not just until it starts.
+          .or(notEndedFilter(now))
           .order("date", { ascending: true })
           .limit(MAX_EVENTS),
         supabase

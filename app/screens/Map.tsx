@@ -31,6 +31,7 @@ import BottomNav from "../components/BottomNav";
 
 // Database
 import { supabase } from "../lib/supabase";
+import { notEndedFilter } from "../lib/eventFilters";
 
 // Types
 import { RootStackParamList } from "../types/types";
@@ -147,7 +148,6 @@ const MapScreen = () => {
   const fetchAll = async () => {
     try {
       setLoading(true);
-      const now = new Date().toISOString();
 
       // Step 1: Fetch categories first, build grouped map as a LOCAL variable
       // so it's immediately available for icon/color calculation below —
@@ -173,7 +173,9 @@ const MapScreen = () => {
         supabase
           .from("events")
           .select(`*, venues ( id, name, lat, lng )`)
-          .gte("date", now)
+          // An event stays on the map (and therefore buyable) for its whole
+          // run, not just until it starts.
+          .or(notEndedFilter())
           .eq("is_public", true),
       ]);
 
