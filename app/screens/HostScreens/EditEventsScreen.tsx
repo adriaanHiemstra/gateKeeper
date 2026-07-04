@@ -1,5 +1,5 @@
 // app/screens/EditEventsScreen.tsx
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import {
   View,
   Text,
@@ -15,6 +15,7 @@ import {
   LayoutAnimation,
   Platform,
   UIManager,
+  findNodeHandle,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
@@ -99,6 +100,7 @@ const InputField = ({
   onChange,
   multiline = false,
   keyboardType = "default",
+  onFocus,
 }: any) => (
   <View
     className={`flex-row items-start bg-white/5 border border-white/10 rounded-2xl px-4 mb-4 ${
@@ -114,6 +116,7 @@ const InputField = ({
       multiline={multiline}
       textAlignVertical={multiline ? "top" : "center"}
       keyboardType={keyboardType}
+      onFocus={onFocus}
       className="flex-1 text-white text-lg font-medium h-full"
       style={{ fontFamily: "Jost-Medium" }}
     />
@@ -213,6 +216,15 @@ const EditEventScreen = () => {
 
   const todayDateString = new Date().toISOString().split("T")[0];
 
+  // KeyboardAwareScrollView only auto-scrolls when the keyboard first opens —
+  // tapping a different field while it's already up doesn't fire that event,
+  // so each TextInput's onFocus below nudges the right scroll view manually.
+  const mainScrollRef = useRef<any>(null);
+  const ticketScrollRef = useRef<any>(null);
+  const scrollToInput = (scrollRef: React.RefObject<any>) => (event: any) => {
+    scrollRef.current?.scrollToFocusedInput(findNodeHandle(event.target));
+  };
+
   const getTimeInMinutes = (time: string) => {
     const [h, m] = time.split(":").map(Number);
     return h * 60 + m;
@@ -221,16 +233,14 @@ const EditEventScreen = () => {
   const availableTimes = useMemo(() => {
     const now = new Date();
     const currentMinutes = now.getHours() * 60 + now.getMinutes();
-    let minimumMinutes = 0;
 
-    if (activeTimeModal === "start" && startDate === todayDateString) {
-      minimumMinutes = currentMinutes;
-    } else if (
-      activeTimeModal === "end" &&
-      (endDate || startDate) === todayDateString
-    ) {
-      minimumMinutes = currentMinutes;
-    }
+    // Only "now" actually rules anything out — and only when the date being
+    // timed is today. Otherwise there's no lower bound, so midnight (00:00,
+    // minute 0) must stay selectable instead of being treated as "before 0".
+    const isToday =
+      (activeTimeModal === "start" && startDate === todayDateString) ||
+      (activeTimeModal === "end" &&
+        (endDate || startDate) === todayDateString);
 
     const minimumStartTimeMinutes =
       activeTimeModal === "end" &&
@@ -241,7 +251,7 @@ const EditEventScreen = () => {
 
     return ALL_TIMES.filter((t) => {
       const minutes = getTimeInMinutes(t);
-      if (minutes <= minimumMinutes) return false;
+      if (isToday && minutes <= currentMinutes) return false;
       if (
         minimumStartTimeMinutes !== null &&
         minutes <= minimumStartTimeMinutes
@@ -477,6 +487,18 @@ const fetchEventData = async () => {
       return;
     }
 
+    if (endDate && endTime) {
+      const startCheck = new Date(`${startDate}T${startTime}:00`);
+      const endCheck = new Date(`${endDate}T${endTime}:00`);
+      if (endCheck <= startCheck) {
+        Alert.alert(
+          "Invalid Dates",
+          "The end date and time must be after the start date and time."
+        );
+        return;
+      }
+    }
+
     setSaving(true);
     try {
       // 1. Process Images
@@ -561,6 +583,16 @@ const fetchEventData = async () => {
     );
   }
 
+  // Whichever date the open calendar modal is picking for, so its current
+  // value (if any) shows highlighted when the picker is reopened.
+  const selectedCalendarDate =
+    activeDateModal === "start" ? startDate : endDate;
+
+  // Same idea for the time list: reopening it should jump straight back to
+  // whichever time is already picked, not always default to midday.
+  const selectedTimeForModal =
+    activeTimeModal === "start" ? startTime : endTime;
+
   return (
     <View className="flex-1 bg-[#121212]">
       <LinearGradient {...bannerGradient} style={StyleSheet.absoluteFill} />
@@ -569,6 +601,7 @@ const fetchEventData = async () => {
 
       <SafeAreaView className="flex-1" edges={["left", "right"]}>
       <KeyboardAwareScrollView
+          ref={mainScrollRef}
           className="flex-1 px-6"
           showsVerticalScrollIndicator={false}
           contentContainerStyle={{ paddingTop: 120, paddingBottom: 140 }}
@@ -665,6 +698,7 @@ const fetchEventData = async () => {
             placeholder="Title"
             value={title}
             onChange={setTitle}
+            onFocus={scrollToInput(mainScrollRef)}
           />
 
           <View className="flex-row gap-4">
@@ -689,7 +723,7 @@ const fetchEventData = async () => {
           <View className="flex-row gap-4">
             <View className="flex-1">
               <SelectorButton
-                icon={<Calendar color="#999" size={20} />}
+                icon={<Calendar color="white" size={20} />}
                 value={endDate}
                 onPress={() => setActiveDateModal("end")}
                 placeholder="End Date (Opt)"
@@ -697,7 +731,7 @@ const fetchEventData = async () => {
             </View>
             <View className="flex-1">
               <SelectorButton
-                icon={<Clock color="#999" size={20} />}
+                icon={<Clock color="white" size={20} />}
                 value={endTime}
                 onPress={() => setActiveTimeModal("end")}
                 placeholder="End Time (Opt)"
@@ -724,6 +758,7 @@ const fetchEventData = async () => {
             value={description}
             onChange={setDescription}
             multiline
+            onFocus={scrollToInput(mainScrollRef)}
           />
 
           {/* TICKETS */}
@@ -1033,6 +1068,7 @@ const fetchEventData = async () => {
               </View>
             </LinearGradient>
             <KeyboardAwareScrollView
+              ref={ticketScrollRef}
               className="flex-1 px-6 pt-8"
               contentContainerStyle={{ paddingBottom: 100 }}
             >
@@ -1051,6 +1087,7 @@ const fetchEventData = async () => {
                     onChangeText={(t) =>
                       setTempTicket({ ...tempTicket, name: t })
                     }
+                    onFocus={scrollToInput(ticketScrollRef)}
                     className="flex-1 text-white text-xl font-bold h-full mb-1"
                   />
                 </View>
@@ -1072,6 +1109,7 @@ const fetchEventData = async () => {
                       onChangeText={(t) =>
                         setTempTicket({ ...tempTicket, price: t })
                       }
+                      onFocus={scrollToInput(ticketScrollRef)}
                       className="flex-1 text-white text-2xl font-bold h-full mb-1"
                     />
                   </View>
@@ -1092,6 +1130,7 @@ const fetchEventData = async () => {
                       onChangeText={(t) =>
                         setTempTicket({ ...tempTicket, quantity: t })
                       }
+                      onFocus={scrollToInput(ticketScrollRef)}
                       className="flex-1 text-white text-xl font-bold h-full mb-2"
                     />
                   </View>
@@ -1211,18 +1250,42 @@ const fetchEventData = async () => {
               </TouchableOpacity>
             </View>
             <RNCalendar
-              minDate={todayDateString}
+              minDate={
+                activeDateModal === "end"
+                  ? startDate || todayDateString
+                  : todayDateString
+              }
               onDayPress={(day: any) => {
-                if (activeDateModal === "start") setStartDate(day.dateString);
-                else setEndDate(day.dateString);
+                if (activeDateModal === "start") {
+                  setStartDate(day.dateString);
+                  // The existing end date is no longer valid once it's
+                  // before the newly picked start date — clear it instead
+                  // of silently saving an inverted range.
+                  if (endDate && endDate < day.dateString) {
+                    setEndDate("");
+                    setEndTime("");
+                  }
+                } else {
+                  setEndDate(day.dateString);
+                }
                 setActiveDateModal(null);
               }}
+              markedDates={
+                selectedCalendarDate
+                  ? {
+                      [selectedCalendarDate]: {
+                        selected: true,
+                        selectedColor: "#F97316",
+                      },
+                    }
+                  : {}
+              }
               theme={{
                 backgroundColor: "#1E1E1E",
                 calendarBackground: "#1E1E1E",
                 dayTextColor: "#ffffff",
                 todayTextColor: "#D087FF",
-                selectedDayBackgroundColor: "#D087FF",
+                selectedDayBackgroundColor: "#F97316",
                 selectedDayTextColor: "#ffffff",
                 monthTextColor: "white",
                 arrowColor: "#D087FF",
@@ -1252,32 +1315,66 @@ const fetchEventData = async () => {
               key={`${activeTimeModal}-${availableTimes.length}`}
               data={availableTimes}
               keyExtractor={(item) => item}
-              // 🚨 FIX: Automatically scrolls down to 12:00 when opened!
-              initialScrollIndex={
-                availableTimes.indexOf("12:00") !== -1 
-                  ? Math.max(0, availableTimes.indexOf("12:00") - 2) 
-                  : 0
-              }
+              // Prefer scrolling to the already-selected time; fall back to
+              // midday when nothing's picked yet (or it's since been
+              // filtered out of the list, e.g. no longer in the future).
+              initialScrollIndex={(() => {
+                const selectedIndex = selectedTimeForModal
+                  ? availableTimes.indexOf(selectedTimeForModal)
+                  : -1;
+                const anchorIndex =
+                  selectedIndex !== -1
+                    ? selectedIndex
+                    : availableTimes.indexOf("12:00");
+                return anchorIndex !== -1 ? Math.max(0, anchorIndex - 2) : 0;
+              })()}
               // 🚨 FIX: Tells the list exactly how tall each item is to calculate the jump
               getItemLayout={(data, index) => ({
                 length: 56,
                 offset: 56 * index,
                 index,
               })}
-              renderItem={({ item }) => (
-                <TouchableOpacity
-                  onPress={() => {
-                    if (activeTimeModal === "start") setStartTime(item);
-                    else setEndTime(item);
-                    setActiveTimeModal(null);
-                  }}
-                  // 🚨 FIX: Exact height inline style matching the length layout above
-                  style={{ height: 56 }}
-                  className="px-4 border-b border-white/5 flex-row items-center justify-between"
-                >
-                  <Text className="text-white text-lg font-bold">{item}</Text>
-                </TouchableOpacity>
-              )}
+              renderItem={({ item }) => {
+                const isSelected =
+                  item ===
+                  (activeTimeModal === "start" ? startTime : endTime);
+                return (
+                  <TouchableOpacity
+                    onPress={() => {
+                      if (activeTimeModal === "start") {
+                        setStartTime(item);
+                        // A same-day end time picked against the old start
+                        // time can now be before/equal to it — clear it
+                        // rather than silently keep an inverted range.
+                        if (
+                          endDate === startDate &&
+                          endTime &&
+                          getTimeInMinutes(endTime) <= getTimeInMinutes(item)
+                        ) {
+                          setEndTime("");
+                        }
+                      } else {
+                        setEndTime(item);
+                      }
+                      setActiveTimeModal(null);
+                    }}
+                    // 🚨 FIX: Exact height inline style matching the length layout above
+                    style={{ height: 56 }}
+                    className={`px-4 border-b border-white/5 flex-row items-center justify-between ${
+                      isSelected ? "bg-orange-500/20" : ""
+                    }`}
+                  >
+                    <Text
+                      className={`text-lg font-bold ${
+                        isSelected ? "text-orange-400" : "text-white"
+                      }`}
+                    >
+                      {item}
+                    </Text>
+                    {isSelected && <Check color="#FB923C" size={20} />}
+                  </TouchableOpacity>
+                );
+              }}
             />
           </View>
         </View>

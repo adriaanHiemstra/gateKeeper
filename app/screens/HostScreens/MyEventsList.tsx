@@ -9,6 +9,7 @@ import {
   FlatList,
   Image,
   ActivityIndicator,
+  Alert,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
@@ -50,6 +51,7 @@ const MyEventsList = () => {
     "upcoming"
   );
   const [loading, setLoading] = useState(true);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   // Data Buckets
   const [eventsData, setEventsData] = useState<{
@@ -154,6 +156,51 @@ const MyEventsList = () => {
     }
   };
 
+  // --- DELETE (past events only) ---
+  // The real gate is server-side (delete_past_event rejects anything that
+  // isn't past or has ticket sales) — this local check just skips the round
+  // trip when we already know it'll be refused.
+  const confirmDeleteEvent = (item: any) => {
+    if (item.sold > 0) {
+      Alert.alert(
+        "Can't Delete",
+        `"${item.title}" has ${item.sold} ticket(s) sold and can't be deleted.`
+      );
+      return;
+    }
+
+    Alert.alert(
+      "Delete Event",
+      `Delete "${item.title}"? This can't be undone.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: () => deleteEvent(item.id),
+        },
+      ]
+    );
+  };
+
+  const deleteEvent = async (eventId: string) => {
+    setDeletingId(eventId);
+    try {
+      const { error } = await supabase.rpc("delete_past_event", {
+        p_event_id: eventId,
+      });
+      if (error) throw error;
+      await fetchMyEvents();
+    } catch (error: any) {
+      Alert.alert(
+        "Couldn't Delete",
+        error?.message ?? "Something went wrong. Please try again."
+      );
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
   // --- Scroll Animation Logic ---
   const translateY = useSharedValue(0);
   const lastContentOffset = useSharedValue(0);
@@ -206,8 +253,16 @@ const MyEventsList = () => {
               <Text className="text-black text-xs font-bold">DRAFT</Text>
             </View>
           )}
-          <TouchableOpacity className="bg-black/40 p-2 rounded-full">
-            <MoreVertical color="white" size={16} />
+          <TouchableOpacity
+            className="bg-black/40 p-2 rounded-full"
+            disabled={activeTab !== "past" || deletingId === item.id}
+            onPress={() => confirmDeleteEvent(item)}
+          >
+            {deletingId === item.id ? (
+              <ActivityIndicator color="white" size="small" />
+            ) : (
+              <MoreVertical color="white" size={16} />
+            )}
           </TouchableOpacity>
         </View>
       </View>

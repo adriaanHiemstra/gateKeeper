@@ -76,7 +76,7 @@ type AppNavigatorProps = {
 };
 
 export default function AppNavigator({
-  initialRouteName = "SignUp",
+  initialRouteName = "Welcome",
 }: AppNavigatorProps) {
   return (
     <Stack.Navigator
