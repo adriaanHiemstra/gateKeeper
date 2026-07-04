@@ -6,7 +6,6 @@ import {
   TouchableOpacity,
   StyleSheet,
   TextInput,
-  Platform,
   Alert,
   ActivityIndicator,
   FlatList,
@@ -21,6 +20,8 @@ import {
   UserPlus,
   UserMinus,
   Users,
+  Check,
+  Clock,
 } from "lucide-react-native";
 
 // Backend & Auth
@@ -40,16 +41,17 @@ const FriendsSocialCircleScreen = () => {
   const navigation = useNavigation();
   const { user } = useAuth();
 
-  // Profile State
   const [currentUserProfile, setCurrentUserProfile] = useState<any>(null);
 
-  // Friend Data State
+  // Accepted friends
   const [friends, setFriends] = useState<any[]>([]);
   const [friendIds, setFriendIds] = useState<Set<string>>(new Set());
-  const [loadingFriends, setLoadingFriends] = useState(true);
-
-  // Block State
+  // Incoming pending requests (people who asked to be my friend)
+  const [requests, setRequests] = useState<any[]>([]);
+  // Outgoing pending requests I've sent (to show "Requested")
+  const [sentIds, setSentIds] = useState<Set<string>>(new Set());
   const [blockedIds, setBlockedIds] = useState<Set<string>>(new Set());
+  const [loadingFriends, setLoadingFriends] = useState(true);
 
   // Search State
   const [isSearchMode, setIsSearchMode] = useState(false);
@@ -57,7 +59,7 @@ const FriendsSocialCircleScreen = () => {
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isSearchingDb, setIsSearchingDb] = useState(false);
 
-  // --- 1. FETCH CURRENT USER PROFILE ---
+  // --- 1. CURRENT USER PROFILE ---
   useEffect(() => {
     const fetchProfile = async () => {
       if (!user) return;
@@ -71,23 +73,19 @@ const FriendsSocialCircleScreen = () => {
     fetchProfile();
   }, [user]);
 
-  // --- 2. FETCH BLOCKED USERS ---
+  // --- 2. BLOCKED USERS ---
   const fetchBlockedUsers = async () => {
     if (!user) return new Set<string>();
     try {
-      const { data, error } = await supabase
+      const { data } = await supabase
         .from("blocked_users")
         .select("blocker_id, blocked_id")
         .or(`blocker_id.eq.${user.id},blocked_id.eq.${user.id}`);
-
-      if (error) throw error;
-
       const ids = new Set<string>();
       data?.forEach((row) => {
         if (row.blocker_id !== user.id) ids.add(row.blocker_id);
         if (row.blocked_id !== user.id) ids.add(row.blocked_id);
       });
-
       setBlockedIds(ids);
       return ids;
     } catch (err) {
@@ -96,68 +94,68 @@ const FriendsSocialCircleScreen = () => {
     }
   };
 
-  // --- UPDATE THE FOCUS EFFECT ---
   useFocusEffect(
     useCallback(() => {
-      const loadAllData = async () => {
-        const currentBlocks = await fetchBlockedUsers();
-        await fetchFriends(currentBlocks);
+      const run = async () => {
+        const blocks = await fetchBlockedUsers();
+        await loadSocial(blocks);
       };
-      loadAllData();
+      run();
     }, [user]),
   );
 
-  const fetchFriends = async (currentBlocks: Set<string>) => {
+  // --- 3. LOAD FRIENDS + REQUESTS in one pass ---
+  const loadSocial = async (currentBlocks: Set<string>) => {
     if (!user) return;
     setLoadingFriends(true);
     try {
-      const { data: links, error: linkError } = await supabase
+      const { data: links, error } = await supabase
         .from("friendships")
-        .select("user_id_1, user_id_2")
+        .select("user_id_1, user_id_2, status, requester_id")
         .or(`user_id_1.eq.${user.id},user_id_2.eq.${user.id}`);
+      if (error) throw error;
 
-      if (linkError) throw linkError;
+      const acceptedIds: string[] = [];
+      const incomingIds: string[] = [];
+      const sent = new Set<string>();
 
-      if (!links || links.length === 0) {
-        setFriends([]);
-        setFriendIds(new Set());
-        return;
+      (links || []).forEach((l) => {
+        const other = l.user_id_1 === user.id ? l.user_id_2 : l.user_id_1;
+        if (currentBlocks.has(other)) return;
+        if (l.status === "accepted") acceptedIds.push(other);
+        else if (l.status === "pending") {
+          if (l.requester_id === user.id) sent.add(other);
+          else incomingIds.push(other);
+        }
+      });
+
+      const allIds = Array.from(new Set([...acceptedIds, ...incomingIds]));
+      const byId: Record<string, any> = {};
+      if (allIds.length) {
+        const { data: profs } = await supabase
+          .from("profiles")
+          .select("id, full_name, username, avatar_url")
+          .in("id", allIds);
+        (profs || []).forEach((p) => (byId[p.id] = p));
       }
 
-      // Extract IDs and defensively filter out anyone who is blocked
-      const extractedIds = links
-        .map((link) =>
-          link.user_id_1 === user.id ? link.user_id_2 : link.user_id_1,
-        )
-        .filter((id) => !currentBlocks.has(id));
-
-      if (extractedIds.length === 0) {
-        setFriends([]);
-        setFriendIds(new Set());
-        return;
-      }
-
-      const { data: profiles, error: profileError } = await supabase
-        .from("profiles")
-        .select("id, full_name, username, avatar_url")
-        .in("id", extractedIds);
-
-      if (profileError) throw profileError;
-
-      const sorted = (profiles || []).sort((a, b) =>
-        (a.full_name || "").localeCompare(b.full_name || ""),
+      setFriends(
+        acceptedIds
+          .map((id) => byId[id])
+          .filter(Boolean)
+          .sort((a, b) => (a.full_name || "").localeCompare(b.full_name || "")),
       );
-
-      setFriends(sorted);
-      setFriendIds(new Set(extractedIds));
-    } catch (error) {
-      console.error("Error fetching friends:", error);
+      setFriendIds(new Set(acceptedIds));
+      setRequests(incomingIds.map((id) => byId[id]).filter(Boolean));
+      setSentIds(sent);
+    } catch (err) {
+      console.error("Error loading social:", err);
     } finally {
       setLoadingFriends(false);
     }
   };
 
-  // --- 3. HANDLE UNIFIED SEARCH ---
+  // --- 4. SEARCH (name / username / phone number) ---
   const handleSearch = async (text: string) => {
     setSearchQuery(text);
     if (text.trim() === "") {
@@ -173,17 +171,16 @@ const FriendsSocialCircleScreen = () => {
         .neq("id", user?.id);
 
       if (blockedIds.size > 0) {
-        const blockedArray = Array.from(blockedIds);
-        query = query.not("id", "in", `(${blockedArray.join(",")})`);
+        query = query.not("id", "in", `(${Array.from(blockedIds).join(",")})`);
       }
 
-      const { data, error } = await query
-        .or(`username.ilike.%${text}%,full_name.ilike.%${text}%`)
-        .limit(15);
+      // Match name/username, and phone number when the query looks numeric.
+      const digits = text.replace(/\D/g, "");
+      let orClause = `username.ilike.%${text}%,full_name.ilike.%${text}%`;
+      if (digits.length >= 4) orClause += `,phone_number.ilike.%${digits}%`;
 
-      if (!error && data) {
-        setSearchResults(data);
-      }
+      const { data, error } = await query.or(orClause).limit(15);
+      if (!error && data) setSearchResults(data);
     } catch (error) {
       console.error("Search error:", error);
     } finally {
@@ -192,7 +189,6 @@ const FriendsSocialCircleScreen = () => {
   };
 
   const toggleSearchMode = (active: boolean) => {
-    // 🛑 REMOVED LayoutAnimation config here to stop the native thread crash
     setIsSearchMode(active);
     if (!active) {
       setSearchQuery("");
@@ -200,18 +196,44 @@ const FriendsSocialCircleScreen = () => {
     }
   };
 
-  // --- 4. ADD / REMOVE LOGIC ---
+  // --- 5. REQUEST / ACCEPT / DECLINE / REMOVE ---
   const handleAddFriend = async (friendId: string, name: string) => {
     if (!user) return;
-    try {
-      await supabase
-        .from("friendships")
-        .insert({ user_id_1: user.id, user_id_2: friendId });
-      setFriendIds((prev) => new Set(prev).add(friendId));
-      fetchFriends(blockedIds);
-    } catch (error) {
-      Alert.alert("Error", `Could not add ${name}`);
+    setSentIds((prev) => new Set(prev).add(friendId)); // optimistic
+    const { data: result, error } = await supabase.rpc("request_friend", {
+      target: friendId,
+    });
+    if (error) {
+      setSentIds((prev) => {
+        const n = new Set(prev);
+        n.delete(friendId);
+        return n;
+      });
+      Alert.alert("Error", `Could not send a request to ${name}.`);
+      return;
     }
+    if (result === "not_allowed") {
+      setSentIds((prev) => {
+        const n = new Set(prev);
+        n.delete(friendId);
+        return n;
+      });
+      Alert.alert("Can't request", `${name} isn't accepting friend requests.`);
+    } else if (result === "accepted" || result === "already_friends") {
+      // They'd already requested us, or you're already friends → refresh.
+      await loadSocial(blockedIds);
+    }
+  };
+
+  const handleAcceptRequest = async (id: string) => {
+    setRequests((prev) => prev.filter((r) => r.id !== id)); // optimistic
+    await supabase.rpc("accept_friend", { other: id });
+    await loadSocial(blockedIds);
+  };
+
+  const handleDeclineRequest = async (id: string) => {
+    setRequests((prev) => prev.filter((r) => r.id !== id));
+    await supabase.rpc("remove_friend", { other: id });
   };
 
   const handleRemoveFriend = (friendId: string, name: string) => {
@@ -222,31 +244,23 @@ const FriendsSocialCircleScreen = () => {
         style: "destructive",
         onPress: async () => {
           if (!user) return;
-          setFriendIds((prev) => {
-            const newSet = new Set(prev);
-            newSet.delete(friendId);
-            return newSet;
-          });
           setFriends((prev) => prev.filter((f) => f.id !== friendId));
-
-          await supabase
-            .from("friendships")
-            .delete()
-            .match({ user_id_1: user.id, user_id_2: friendId });
-          await supabase
-            .from("friendships")
-            .delete()
-            .match({ user_id_1: friendId, user_id_2: user.id });
+          setFriendIds((prev) => {
+            const n = new Set(prev);
+            n.delete(friendId);
+            return n;
+          });
+          await supabase.rpc("remove_friend", { other: friendId });
         },
       },
     ]);
   };
 
-  // --- 5. BLOCK USER LOGIC ---
+  // --- 6. BLOCK ---
   const handleBlockUser = (targetId: string, targetName: string) => {
     Alert.alert(
       "Block User",
-      `Are you sure you want to block ${targetName}? They won't be able to see your activity, and they will be removed from your friends list.`,
+      `Block ${targetName}? They won't be able to see your activity, and they'll be removed from your friends.`,
       [
         { text: "Cancel", style: "cancel" },
         {
@@ -254,34 +268,21 @@ const FriendsSocialCircleScreen = () => {
           style: "destructive",
           onPress: async () => {
             if (!user) return;
-
-            // Optimistic UI updates
             setFriends((prev) => prev.filter((f) => f.id !== targetId));
+            setRequests((prev) => prev.filter((f) => f.id !== targetId));
             setSearchResults((prev) => prev.filter((f) => f.id !== targetId));
             setFriendIds((prev) => {
-              const newSet = new Set(prev);
-              newSet.delete(targetId);
-              return newSet;
+              const n = new Set(prev);
+              n.delete(targetId);
+              return n;
             });
-            // ✅ CRITICAL FIX: Add them to the local block list instantly so they are filtered out of searches
             setBlockedIds((prev) => new Set(prev).add(targetId));
-
             try {
-              await supabase.from("blocked_users").insert({
-                blocker_id: user.id,
-                blocked_id: targetId,
-              });
-
               await supabase
-                .from("friendships")
-                .delete()
-                .match({ user_id_1: user.id, user_id_2: targetId });
-              await supabase
-                .from("friendships")
-                .delete()
-                .match({ user_id_1: targetId, user_id_2: user.id });
-
-              Alert.alert("Blocked", `${targetName} has been blocked.`);
+                .from("blocked_users")
+                .insert({ blocker_id: user.id, blocked_id: targetId });
+              // Friendship is also severed by a DB trigger; this covers pre-migration.
+              await supabase.rpc("remove_friend", { other: targetId });
             } catch (error) {
               console.error("Error blocking user:", error);
               Alert.alert("Error", "Could not block user.");
@@ -292,9 +293,10 @@ const FriendsSocialCircleScreen = () => {
     );
   };
 
-  // --- 6. RENDER ITEM ---
+  // --- 7. RENDER: a person (friend or search result) ---
   const renderPersonItem = ({ item }: { item: any }) => {
     const isFriend = friendIds.has(item.id);
+    const isSent = sentIds.has(item.id);
     const avatarImg = item.avatar_url
       ? { uri: item.avatar_url }
       : PLACEHOLDER_IMG;
@@ -333,6 +335,11 @@ const FriendsSocialCircleScreen = () => {
           >
             <UserMinus color="#ef4444" size={20} />
           </TouchableOpacity>
+        ) : isSent ? (
+          <View className="flex-row items-center bg-white/10 px-4 py-2 rounded-full border border-white/10">
+            <Clock color="#999" size={14} className="mr-1" />
+            <Text className="text-gray-300 font-bold text-xs">Requested</Text>
+          </View>
         ) : (
           <TouchableOpacity
             onPress={() => handleAddFriend(item.id, item.full_name)}
@@ -346,6 +353,63 @@ const FriendsSocialCircleScreen = () => {
     );
   };
 
+  // Requests inbox — shown above the friends list (not while searching).
+  const renderRequestsHeader = () => {
+    if (isSearchMode || searchQuery.length > 0 || requests.length === 0)
+      return null;
+    return (
+      <View className="mb-6">
+        <Text
+          className="text-white text-lg font-bold mb-3"
+          style={{ fontFamily: "Jost-Medium" }}
+        >
+          Friend Requests ({requests.length})
+        </Text>
+        {requests.map((r) => (
+          <View
+            key={r.id}
+            className="flex-row items-center justify-between mb-3 bg-orange-500/5 p-3 rounded-2xl border border-orange-500/20"
+          >
+            <View className="flex-row items-center flex-1 pr-2">
+              <Image
+                source={r.avatar_url ? { uri: r.avatar_url } : PLACEHOLDER_IMG}
+                className="w-12 h-12 rounded-full mr-4 border border-white/20 bg-[#1E1E1E]"
+                resizeMode="cover"
+              />
+              <View className="flex-1">
+                <Text
+                  className="text-white text-base font-bold"
+                  numberOfLines={1}
+                >
+                  {r.full_name || "Unknown"}
+                </Text>
+                <Text className="text-gray-400 text-xs" numberOfLines={1}>
+                  @{r.username || "user"}
+                </Text>
+              </View>
+            </View>
+            <View className="flex-row items-center">
+              <TouchableOpacity
+                onPress={() => handleDeclineRequest(r.id)}
+                className="bg-white/10 p-2.5 rounded-full border border-white/5 mr-2"
+              >
+                <X color="#999" size={18} />
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => handleAcceptRequest(r.id)}>
+                <LinearGradient
+                  {...fireGradient}
+                  className="p-2.5 rounded-full items-center justify-center"
+                >
+                  <Check color="white" size={18} strokeWidth={3} />
+                </LinearGradient>
+              </TouchableOpacity>
+            </View>
+          </View>
+        ))}
+      </View>
+    );
+  };
+
   const displayData = searchQuery.length > 0 ? searchResults : friends;
 
   return (
@@ -355,7 +419,7 @@ const FriendsSocialCircleScreen = () => {
 
       <SafeAreaView className="flex-1" edges={["left", "right"]}>
         <View className="flex-1 pt-24 px-6">
-          {/* HEADER SECTION (User Profile) */}
+          {/* HEADER (User Profile) */}
           <View className="mb-8">
             <TouchableOpacity
               onPress={() => navigation.goBack()}
@@ -395,7 +459,7 @@ const FriendsSocialCircleScreen = () => {
             </View>
           </View>
 
-          {/* DYNAMIC HEADER & SEARCH BAR */}
+          {/* HEADER & SEARCH BAR */}
           <View className="mb-4 h-14 justify-center z-10">
             {!isSearchMode ? (
               <View className="flex-row items-center justify-between">
@@ -416,11 +480,10 @@ const FriendsSocialCircleScreen = () => {
               <View className="flex-row items-center bg-white/10 border border-white/20 rounded-xl px-4 h-full w-full shadow-lg shadow-black/50">
                 <Search color="#FA8900" size={20} className="mr-3" />
                 <TextInput
-                  placeholder="Find new friends or search crew..."
+                  placeholder="Search by name, @username or number..."
                   placeholderTextColor="#999"
                   value={searchQuery}
                   onChangeText={handleSearch}
-                  // 🛑 REMOVED autoFocus={true} to stop aggressive keyboard popping
                   autoCapitalize="none"
                   className="flex-1 text-white text-lg font-medium h-full"
                   style={{ fontFamily: "Jost-Medium" }}
@@ -447,6 +510,7 @@ const FriendsSocialCircleScreen = () => {
               keyExtractor={(item) => item.id}
               showsVerticalScrollIndicator={false}
               contentContainerStyle={{ paddingBottom: 120 }}
+              ListHeaderComponent={renderRequestsHeader()}
               ListEmptyComponent={
                 <View className="items-center mt-16 px-4">
                   <View className="w-20 h-20 bg-white/5 rounded-full items-center justify-center mb-4 border border-white/10">
@@ -466,7 +530,7 @@ const FriendsSocialCircleScreen = () => {
                         </Text>
                       )}
                     </>
-                  ) : (
+                  ) : requests.length > 0 ? null : (
                     <>
                       <Text
                         className="text-white font-bold text-xl mb-2 text-center"
@@ -475,8 +539,8 @@ const FriendsSocialCircleScreen = () => {
                         Your crew is empty
                       </Text>
                       <Text className="text-gray-500 text-center">
-                        Tap the search icon above to find people and build your
-                        social circle!
+                        Tap the search icon above to find people and send friend
+                        requests!
                       </Text>
                     </>
                   )}
