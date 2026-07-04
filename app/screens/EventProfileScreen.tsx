@@ -823,7 +823,14 @@ const EventProfileScreen = () => {
               keyExtractor={(item, i) => item.friend_id || String(i)}
               showsVerticalScrollIndicator={false}
               renderItem={({ item }: { item: any }) => (
-                <View className="flex-row items-center mb-4">
+                <TouchableOpacity
+                  activeOpacity={0.8}
+                  onPress={() => {
+                    setShowFriends(false);
+                    navigation.navigate("UserProfile", { userId: item.friend_id });
+                  }}
+                  className="flex-row items-center mb-4"
+                >
                   <Image
                     source={
                       item.avatar_url
@@ -837,10 +844,12 @@ const EventProfileScreen = () => {
                       {item.username || "Friend"}
                     </Text>
                     <Text className="text-gray-400 text-sm">
-                      {item.intent === "GOING" ? "Going 🚀" : "Interested"}
+                      {item.intent === "BOUGHT" || item.intent === "GOING"
+                        ? "Going 🎟"
+                        : "Interested"}
                     </Text>
                   </View>
-                </View>
+                </TouchableOpacity>
               )}
             />
           </View>

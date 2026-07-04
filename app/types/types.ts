@@ -65,6 +65,7 @@ export type RootStackParamList = {
     ticketPrice?: string;
   };
   EventHostProfile: { hostId: string };
+  UserProfile: { userId: string };
   PurchaseTicket: {
     eventId: string;
     eventName: string;

@@ -19,6 +19,7 @@ import ResetPassword from "../screens/ResetPassword";
 import EventProfileScreen from "../screens/EventProfileScreen";
 import TicketDisplayScreen from "../screens/TicketDisplayScreen";
 import EventHostProfileScreen from "../screens/EventHostProfileScreen";
+import UserProfileScreen from "../screens/UserProfileScreen";
 import FriendsSocialCircleScreen from "../screens/FriendsSocialCircleScreen";
 import PurchaseTicketScreen from "../screens/PurchaseTicketScreen";
 import VenueProfileScreen from "../screens/VenueProfileScreen";
@@ -115,6 +116,7 @@ export default function AppNavigator({
         name="EventHostProfile"
         component={EventHostProfileScreen}
       />
+      <Stack.Screen name="UserProfile" component={UserProfileScreen} />
       <Stack.Screen name="VenueProfile" component={VenueProfileScreen} />
       <Stack.Screen name="PurchaseTicket" component={PurchaseTicketScreen} />
 

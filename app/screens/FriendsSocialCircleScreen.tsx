@@ -303,6 +303,9 @@ const FriendsSocialCircleScreen = () => {
 
     return (
       <TouchableOpacity
+        onPress={() =>
+          (navigation as any).navigate("UserProfile", { userId: item.id })
+        }
         onLongPress={() => handleBlockUser(item.id, item.full_name)}
         delayLongPress={500}
         activeOpacity={0.8}
