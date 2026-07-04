@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GateKeeper — Your pass to the best events</title>
+  <meta name="description" content="GateKeeper is South Africa's social event ticketing platform. Discover events your friends are going to, find what's on nearby, and tap in. For hosts: create, sell, and promote tickets with pro-grade insights — all in one app." />
+  <meta name="theme-color" content="#05070D" />
+  <link rel="icon" href="favicon.png" />
+
+  <!-- Open Graph -->
+  <meta property="og:title" content="GateKeeper — Your pass to the best events" />
+  <meta property="og:description" content="Discover events, see where your friends are going, and tap in. Hosts create, sell & promote tickets with pro insights — all in one app." />
+  <meta property="og:type" content="website" />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Jost:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+
+  <style>
+    :root {
+      --bg: #05070d;
+      --bg-2: #0a0f1c;
+      --navy: #0a192f;
+      --ink: #f4f6fb;
+      --muted: #9aa4b8;
+      --muted-2: #6b7488;
+      --line: rgba(255, 255, 255, 0.08);
+      --glass: rgba(255, 255, 255, 0.04);
+      --glass-2: rgba(255, 255, 255, 0.06);
+
+      --fire-1: #ffa033;
+      --fire-2: #fa8900;
+      --fire-3: #942c00;
+      --electric-1: #d087ff;
+      --electric-2: #b92bff;
+      --electric-3: #6500b0;
+
+      --fire-grad: linear-gradient(100deg, #ffa033, #fa8900 55%, #ff5a1f);
+      --electric-grad: linear-gradient(135deg, #d087ff, #b92bff 50%, #6500b0);
+      --radius: 22px;
+      --maxw: 1180px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
+    body {
+      font-family: 'Jost', system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--ink);
+      line-height: 1.55;
+      overflow-x: hidden;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Ambient gradient glow background */
+    .ambient {
+      position: fixed; inset: 0; z-index: -2; overflow: hidden;
+      background:
+        radial-gradient(900px 600px at 85% -5%, rgba(250, 137, 0, 0.18), transparent 60%),
+        radial-gradient(800px 700px at 5% 15%, rgba(185, 43, 255, 0.14), transparent 60%),
+        radial-gradient(1000px 800px at 50% 110%, rgba(10, 25, 47, 0.9), transparent 70%),
+        var(--bg);
+    }
+    .blob { position: fixed; z-index: -1; border-radius: 50%; filter: blur(90px); opacity: 0.5; pointer-events: none; }
+    .blob.a { width: 460px; height: 460px; top: -120px; right: -80px; background: radial-gradient(circle, rgba(250,137,0,0.55), transparent 70%); animation: float1 16s ease-in-out infinite; }
+    .blob.b { width: 520px; height: 520px; bottom: 5%; left: -140px; background: radial-gradient(circle, rgba(185,43,255,0.45), transparent 70%); animation: float2 20s ease-in-out infinite; }
+    @keyframes float1 { 50% { transform: translate(-40px, 60px); } }
+    @keyframes float2 { 50% { transform: translate(50px, -50px); } }
+
+    .wrap { width: 100%; max-width: var(--maxw); margin: 0 auto; padding: 0 24px; }
+
+    /* ---------- Nav ---------- */
+    header {
+      position: sticky; top: 0; z-index: 50;
+      backdrop-filter: blur(16px);
+      background: rgba(5, 7, 13, 0.55);
+      border-bottom: 1px solid var(--line);
+    }
+    nav { display: flex; align-items: center; justify-content: space-between; height: 70px; }
+    .brand { display: flex; align-items: center; gap: 11px; font-weight: 700; font-size: 1.18rem; letter-spacing: -0.02em; color: var(--ink); text-decoration: none; }
+    .brand img { width: 30px; height: 30px; object-fit: contain; }
+    .brand b { font-weight: 800; }
+    .nav-links { display: flex; align-items: center; gap: 34px; }
+    .nav-links a { color: var(--muted); text-decoration: none; font-size: 0.95rem; font-weight: 500; transition: color 0.2s; }
+    .nav-links a:hover { color: var(--ink); }
+
+    .btn {
+      display: inline-flex; align-items: center; gap: 9px;
+      font-family: inherit; font-weight: 600; font-size: 0.97rem;
+      padding: 12px 22px; border-radius: 999px; border: 0; cursor: pointer;
+      text-decoration: none; white-space: nowrap; transition: transform 0.18s ease, box-shadow 0.25s ease, background 0.2s;
+    }
+    .btn-fire { background: var(--fire-grad); color: #1a0f00; box-shadow: 0 10px 30px -8px rgba(250, 137, 0, 0.55); font-weight: 700; }
+    .btn-fire:hover { transform: translateY(-2px); box-shadow: 0 16px 40px -8px rgba(250, 137, 0, 0.7); }
+    .btn-ghost { background: var(--glass-2); color: var(--ink); border: 1px solid var(--line); }
+    .btn-ghost:hover { background: rgba(255,255,255,0.1); transform: translateY(-2px); }
+    .btn-lg { padding: 15px 30px; font-size: 1.05rem; }
+
+    /* ---------- Hero ---------- */
+    .hero { padding: 80px 0 70px; position: relative; }
+    .hero-grid { display: grid; grid-template-columns: 1.05fr 0.95fr; gap: 40px; align-items: center; }
+    .eyebrow {
+      display: inline-flex; align-items: center; gap: 8px;
+      font-size: 0.8rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;
+      color: var(--fire-1); background: rgba(250, 137, 0, 0.1);
+      border: 1px solid rgba(250, 137, 0, 0.25); padding: 7px 14px; border-radius: 999px;
+    }
+    .eyebrow .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--fire-1); box-shadow: 0 0 10px var(--fire-1); }
+    h1 {
+      font-size: clamp(2.6rem, 6vw, 4.3rem); line-height: 1.02; letter-spacing: -0.03em;
+      font-weight: 800; margin: 22px 0 18px;
+    }
+    .grad-fire { background: var(--fire-grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
+    .grad-electric { background: var(--electric-grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
+    .lead { font-size: clamp(1.05rem, 1.6vw, 1.22rem); color: var(--muted); max-width: 540px; margin-bottom: 30px; }
+    .hero-cta { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; }
+    .hero-meta { display: flex; gap: 26px; margin-top: 34px; flex-wrap: wrap; }
+    .hero-meta .stat { display: flex; flex-direction: column; }
+    .hero-meta .stat b { font-size: 1.5rem; font-weight: 800; letter-spacing: -0.02em; }
+    .hero-meta .stat span { font-size: 0.85rem; color: var(--muted-2); }
+
+    /* ---------- Phone mockup ---------- */
+    .phone-stage { position: relative; display: flex; justify-content: center; perspective: 1400px; }
+    .phone {
+      position: relative; width: 290px; height: 590px; border-radius: 42px;
+      background: linear-gradient(160deg, #1a2235, #0a0f1c);
+      border: 1px solid rgba(255,255,255,0.12);
+      box-shadow: 0 40px 90px -30px rgba(0,0,0,0.9), inset 0 0 0 8px #05070d, 0 0 0 1px rgba(255,255,255,0.05);
+      padding: 13px; animation: phoneFloat 6s ease-in-out infinite;
+    }
+    @keyframes phoneFloat { 50% { transform: translateY(-14px); } }
+    .phone-screen {
+      width: 100%; height: 100%; border-radius: 30px; overflow: hidden;
+      background: linear-gradient(180deg, #0a192f 0%, #05070d 70%);
+      position: relative;
+    }
+    .notch { position: absolute; top: 0; left: 50%; transform: translateX(-50%); width: 120px; height: 26px; background: #05070d; border-radius: 0 0 16px 16px; z-index: 5; }
+    .app-head { padding: 34px 18px 10px; display: flex; align-items: center; justify-content: space-between; }
+    .app-head .logo-row { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 0.95rem; }
+    .app-head .logo-row img { width: 20px; height: 20px; }
+    .app-head .avatar { width: 30px; height: 30px; border-radius: 50%; background: var(--fire-grad); }
+    .screen-search { margin: 6px 16px 12px; display: flex; align-items: center; gap: 8px; background: rgba(255,255,255,0.07); border: 1px solid var(--line); border-radius: 14px; padding: 10px 12px; color: var(--muted-2); font-size: 0.8rem; }
+    .chips { display: flex; gap: 7px; padding: 0 16px 14px; overflow: hidden; }
+    .chip { font-size: 0.7rem; padding: 6px 12px; border-radius: 999px; background: rgba(255,255,255,0.06); border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
+    .chip.on { background: var(--fire-grad); color: #1a0f00; border: 0; font-weight: 700; }
+    .ev-card { margin: 0 16px 12px; border-radius: 16px; overflow: hidden; background: rgba(255,255,255,0.04); border: 1px solid var(--line); }
+    .ev-img { height: 92px; position: relative; }
+    .ev-img.one { background: linear-gradient(135deg, #fa8900, #942c00); }
+    .ev-img.two { background: linear-gradient(135deg, #b92bff, #6500b0); }
+    .ev-img .tag { position: absolute; top: 8px; left: 8px; font-size: 0.62rem; font-weight: 700; background: rgba(0,0,0,0.5); backdrop-filter: blur(6px); padding: 4px 9px; border-radius: 999px; }
+    .ev-body { padding: 10px 12px 12px; }
+    .ev-body h4 { font-size: 0.86rem; font-weight: 700; margin-bottom: 4px; }
+    .ev-body .meta { font-size: 0.68rem; color: var(--muted-2); }
+    .friends { display: flex; align-items: center; gap: 7px; margin-top: 9px; }
+    .friends .stack { display: flex; }
+    .friends .stack span { width: 20px; height: 20px; border-radius: 50%; border: 2px solid #0a0f1c; margin-left: -7px; }
+    .friends .stack span:first-child { margin-left: 0; }
+    .friends small { font-size: 0.66rem; color: var(--fire-1); font-weight: 600; }
+
+    /* Floating cards around phone */
+    .float-card {
+      position: absolute; background: rgba(13, 18, 30, 0.85); backdrop-filter: blur(14px);
+      border: 1px solid var(--line); border-radius: 18px; padding: 14px; box-shadow: 0 24px 50px -20px rgba(0,0,0,0.8);
+      animation: cardFloat 7s ease-in-out infinite;
+    }
+    @keyframes cardFloat { 50% { transform: translateY(-12px); } }
+    .float-map { top: 60px; right: -10px; width: 180px; animation-delay: 1s; }
+    .float-map .map { height: 96px; border-radius: 12px; background:
+        linear-gradient(rgba(10,25,47,0.4), rgba(10,25,47,0.4)),
+        repeating-linear-gradient(0deg, rgba(255,255,255,0.05) 0 1px, transparent 1px 22px),
+        repeating-linear-gradient(90deg, rgba(255,255,255,0.05) 0 1px, transparent 1px 22px),
+        #0c1424; position: relative; overflow: hidden; }
+    .pin { position: absolute; width: 13px; height: 13px; border-radius: 50% 50% 50% 0; transform: rotate(-45deg); }
+    .pin::after { content: ''; position: absolute; inset: 3.5px; background: #05070d; border-radius: 50%; }
+    .float-map .label { font-size: 0.72rem; font-weight: 600; margin-top: 9px; display: flex; align-items: center; gap: 6px; }
+    .float-friends { bottom: 70px; left: -24px; width: 188px; animation-delay: 2.2s; }
+    .float-friends .row { display: flex; align-items: center; gap: 9px; }
+    .float-friends .stack span { width: 26px; height: 26px; border-radius: 50%; border: 2px solid #0d121e; margin-left: -9px; }
+    .float-friends .stack span:first-child { margin-left: 0; }
+    .float-friends .txt b { font-size: 0.82rem; display: block; }
+    .float-friends .txt small { font-size: 0.68rem; color: var(--muted-2); }
+
+    .av-1 { background: linear-gradient(135deg,#ffa033,#fa8900); }
+    .av-2 { background: linear-gradient(135deg,#d087ff,#b92bff); }
+    .av-3 { background: linear-gradient(135deg,#37d4a7,#0a8f6c); }
+    .av-4 { background: linear-gradient(135deg,#5b9dff,#2b5fff); }
+
+    /* ---------- Section scaffold ---------- */
+    section { padding: 84px 0; position: relative; }
+    .sec-head { text-align: center; max-width: 660px; margin: 0 auto 54px; }
+    .sec-tag { font-size: 0.8rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 14px; }
+    .sec-tag.fire { color: var(--fire-1); }
+    .sec-tag.electric { color: var(--electric-1); }
+    h2 { font-size: clamp(2rem, 4vw, 3rem); letter-spacing: -0.03em; line-height: 1.08; font-weight: 800; }
+    .sec-head p { color: var(--muted); margin-top: 16px; font-size: 1.08rem; }
+
+    /* ---------- Feature cards ---------- */
+    .grid { display: grid; gap: 20px; }
+    .grid-4 { grid-template-columns: repeat(4, 1fr); }
+    .grid-3 { grid-template-columns: repeat(3, 1fr); }
+    .card {
+      background: var(--glass); border: 1px solid var(--line); border-radius: var(--radius);
+      padding: 28px 24px; position: relative; overflow: hidden;
+      transition: transform 0.3s ease, border-color 0.3s ease, background 0.3s ease;
+    }
+    .card:hover { transform: translateY(-6px); border-color: rgba(255,255,255,0.16); background: var(--glass-2); }
+    .card .ico {
+      width: 50px; height: 50px; border-radius: 14px; display: grid; place-items: center; margin-bottom: 18px;
+      color: #fff;
+    }
+    .ico.fire { background: rgba(250,137,0,0.14); border: 1px solid rgba(250,137,0,0.3); color: var(--fire-1); }
+    .ico.electric { background: rgba(185,43,255,0.14); border: 1px solid rgba(185,43,255,0.3); color: var(--electric-1); }
+    .card h3 { font-size: 1.18rem; font-weight: 700; margin-bottom: 9px; letter-spacing: -0.01em; }
+    .card p { color: var(--muted); font-size: 0.96rem; }
+    .card .glow { position: absolute; top: -40%; right: -30%; width: 200px; height: 200px; border-radius: 50%; filter: blur(60px); opacity: 0; transition: opacity 0.4s; }
+    .card:hover .glow { opacity: 0.5; }
+    .glow.fire { background: rgba(250,137,0,0.4); }
+    .glow.electric { background: rgba(185,43,255,0.4); }
+
+    /* ---------- Host split ---------- */
+    .split { display: grid; grid-template-columns: 1fr 1fr; gap: 56px; align-items: center; }
+    .host-feature { display: flex; gap: 16px; margin-bottom: 24px; }
+    .host-feature .num { flex: none; width: 44px; height: 44px; border-radius: 12px; background: rgba(185,43,255,0.12); border: 1px solid rgba(185,43,255,0.3); color: var(--electric-1); display: grid; place-items: center; }
+    .host-feature h3 { font-size: 1.15rem; font-weight: 700; margin-bottom: 5px; }
+    .host-feature p { color: var(--muted); font-size: 0.96rem; }
+
+    /* Dashboard mock */
+    .dash { background: linear-gradient(160deg, rgba(255,255,255,0.05), rgba(255,255,255,0.02)); border: 1px solid var(--line); border-radius: 26px; padding: 22px; box-shadow: 0 40px 80px -30px rgba(0,0,0,0.7); }
+    .dash-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; }
+    .dash-top b { font-size: 1.05rem; }
+    .dash-top .pill { font-size: 0.7rem; color: var(--electric-1); background: rgba(185,43,255,0.12); border: 1px solid rgba(185,43,255,0.3); padding: 5px 11px; border-radius: 999px; font-weight: 600; }
+    .dash-stats { display: grid; grid-template-columns: repeat(3,1fr); gap: 12px; margin-bottom: 18px; }
+    .dash-stat { background: rgba(255,255,255,0.04); border: 1px solid var(--line); border-radius: 14px; padding: 14px; }
+    .dash-stat span { font-size: 0.7rem; color: var(--muted-2); text-transform: uppercase; letter-spacing: 0.05em; }
+    .dash-stat b { display: block; font-size: 1.35rem; font-weight: 800; margin-top: 4px; }
+    .dash-stat b.grad { background: var(--electric-grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
+    .chart { display: flex; align-items: flex-end; gap: 9px; height: 130px; padding: 16px; background: rgba(255,255,255,0.03); border: 1px solid var(--line); border-radius: 14px; }
+    .bar { flex: 1; border-radius: 7px 7px 3px 3px; background: var(--electric-grad); opacity: 0.85; min-height: 8%; transition: height 0.8s cubic-bezier(.2,.8,.2,1); }
+
+    /* ---------- Trust / Paystack ---------- */
+    .trust { text-align: center; }
+    .trust-card { display: inline-flex; align-items: center; gap: 14px; background: var(--glass); border: 1px solid var(--line); border-radius: 999px; padding: 14px 26px; font-size: 0.98rem; color: var(--muted); }
+    .trust-card svg { color: #36d39a; }
+    .trust-card b { color: var(--ink); font-weight: 700; }
+
+    /* ---------- Pricing strip ---------- */
+    .price-band { background: linear-gradient(120deg, rgba(250,137,0,0.08), rgba(185,43,255,0.08)); border: 1px solid var(--line); border-radius: 28px; padding: 44px; text-align: center; }
+    .price-band h3 { font-size: clamp(1.5rem, 3vw, 2.1rem); font-weight: 800; letter-spacing: -0.02em; }
+    .price-band p { color: var(--muted); margin: 12px auto 0; max-width: 560px; }
+
+    /* ---------- CTA ---------- */
+    .cta-final { text-align: center; }
+    .cta-final h2 { margin-bottom: 18px; }
+    .badges { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; margin-top: 30px; }
+    .badge { display: inline-flex; align-items: center; gap: 11px; background: var(--glass-2); border: 1px solid var(--line); border-radius: 14px; padding: 11px 20px; }
+    .badge svg { width: 24px; height: 24px; }
+    .badge .b-txt small { display: block; font-size: 0.65rem; color: var(--muted-2); }
+    .badge .b-txt b { font-size: 0.95rem; }
+
+    /* ---------- Footer ---------- */
+    footer { border-top: 1px solid var(--line); padding: 56px 0 40px; margin-top: 40px; }
+    .foot-grid { display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 40px; margin-bottom: 40px; }
+    .foot-about { color: var(--muted); font-size: 0.95rem; max-width: 360px; margin-top: 16px; }
+    .foot-col h5 { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted-2); margin-bottom: 16px; }
+    .foot-col a { display: block; color: var(--muted); text-decoration: none; font-size: 0.95rem; margin-bottom: 11px; transition: color 0.2s; }
+    .foot-col a:hover { color: var(--ink); }
+    .foot-bottom { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 14px; padding-top: 26px; border-top: 1px solid var(--line); color: var(--muted-2); font-size: 0.88rem; }
+    .foot-bottom .made { display: inline-flex; align-items: center; gap: 7px; }
+
+    /* ---------- Reveal animation ---------- */
+    .reveal { opacity: 0; transform: translateY(28px); transition: opacity 0.7s ease, transform 0.7s ease; }
+    .reveal.in { opacity: 1; transform: none; }
+
+    /* ---------- Responsive ---------- */
+    @media (max-width: 940px) {
+      .hero-grid { grid-template-columns: 1fr; gap: 60px; }
+      .hero-meta { justify-content: flex-start; }
+      .phone-stage { margin-top: 10px; }
+      .split { grid-template-columns: 1fr; gap: 40px; }
+      .grid-4 { grid-template-columns: repeat(2, 1fr); }
+      .foot-grid { grid-template-columns: 1fr 1fr; }
+      .foot-about-col { grid-column: 1 / -1; }
+    }
+    @media (max-width: 620px) {
+      .nav-links { display: none; }
+      .grid-4, .grid-3 { grid-template-columns: 1fr; }
+      .hero { padding: 48px 0 40px; }
+      section { padding: 64px 0; }
+      .float-map { right: -4px; width: 150px; }
+      .float-friends { left: -8px; width: 160px; }
+      .price-band { padding: 30px 22px; }
+      .foot-grid { grid-template-columns: 1fr; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      * { animation: none !important; }
+      .reveal { transition: none; opacity: 1; transform: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="ambient"></div>
+  <div class="blob a"></div>
+  <div class="blob b"></div>
+
+  <!-- NAV -->
+  <header>
+    <div class="wrap">
+      <nav>
+        <a href="#top" class="brand"><img src="logo.png" alt="GateKeeper logo" />Gate<b>Keeper</b></a>
+        <div class="nav-links">
+          <a href="#discover">Discover</a>
+          <a href="#hosts">For Hosts</a>
+          <a href="#pricing">Pricing</a>
+        </div>
+        <a href="#get" class="btn btn-fire">Get the app</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="top">
+    <!-- HERO -->
+    <section class="hero">
+      <div class="wrap hero-grid">
+        <div class="hero-copy">
+          <span class="eyebrow"><span class="dot"></span> Social event ticketing</span>
+          <h1>Your pass to the <span class="grad-fire">best events</span>.</h1>
+          <p class="lead">
+            Discover what's on, see exactly where your friends are going, and tap in —
+            all from one app. Hosts create, sell, and promote tickets with pro-grade
+            insights, end to end.
+          </p>
+          <div class="hero-cta">
+            <a href="#get" class="btn btn-fire btn-lg">Get the app</a>
+            <a href="#hosts" class="btn btn-ghost btn-lg">I'm hosting an event →</a>
+          </div>
+          <div class="hero-meta">
+            <div class="stat"><b class="grad-fire">Discover</b><span>events near you</span></div>
+            <div class="stat"><b class="grad-fire">Tap in</b><span>tickets in seconds</span></div>
+            <div class="stat"><b class="grad-fire">Together</b><span>see who's going</span></div>
+          </div>
+        </div>
+
+        <!-- Phone mockup -->
+        <div class="phone-stage reveal">
+          <div class="phone">
+            <div class="phone-screen">
+              <div class="notch"></div>
+              <div class="app-head">
+                <div class="logo-row"><img src="logo.png" alt="" /> GateKeeper</div>
+                <div class="avatar"></div>
+              </div>
+              <div class="screen-search">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+                Search events, venues…
+              </div>
+              <div class="chips">
+                <span class="chip on">For you</span>
+                <span class="chip">Music</span>
+                <span class="chip">Nightlife</span>
+                <span class="chip">Sport</span>
+              </div>
+              <div class="ev-card">
+                <div class="ev-img one"><span class="tag">🔥 Trending</span></div>
+                <div class="ev-body">
+                  <h4>Sunset Rooftop Sessions</h4>
+                  <div class="meta">Sat 21:00 · Cape Town</div>
+                  <div class="friends">
+                    <div class="stack"><span class="av-1"></span><span class="av-2"></span><span class="av-3"></span></div>
+                    <small>12 friends going</small>
+                  </div>
+                </div>
+              </div>
+              <div class="ev-card">
+                <div class="ev-img two"><span class="tag">This weekend</span></div>
+                <div class="ev-body">
+                  <h4>Neon Jungle — Live</h4>
+                  <div class="meta">Fri 22:00 · The Warehouse</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Floating map card -->
+          <div class="float-card float-map">
+            <div class="map">
+              <span class="pin" style="top:22px;left:28px;background:#fa8900;"></span>
+              <span class="pin" style="top:54px;left:120px;background:#b92bff;"></span>
+              <span class="pin" style="top:70px;left:60px;background:#36d39a;"></span>
+            </div>
+            <div class="label">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fa8900" stroke-width="2"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+              8 events nearby
+            </div>
+          </div>
+
+          <!-- Floating friends card -->
+          <div class="float-card float-friends">
+            <div class="row">
+              <div class="stack"><span class="av-2"></span><span class="av-4"></span><span class="av-1"></span></div>
+              <div class="txt"><b>Your crew is out</b><small>3 friends going tonight</small></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- DISCOVER / USER FEATURES -->
+    <section id="discover">
+      <div class="wrap">
+        <div class="sec-head reveal">
+          <div class="sec-tag fire">For event-goers</div>
+          <h2>Never miss the <span class="grad-fire">moment</span>.</h2>
+          <p>GateKeeper learns what you love and brings the city to your feed — then makes getting in effortless.</p>
+        </div>
+        <div class="grid grid-4">
+          <div class="card reveal">
+            <div class="glow fire"></div>
+            <div class="ico fire">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3Z"/></svg>
+            </div>
+            <h3>A feed made for you</h3>
+            <p>A curated home feed that surfaces the events you'll actually want to be at — ranked for your taste.</p>
+          </div>
+          <div class="card reveal">
+            <div class="glow fire"></div>
+            <div class="ico fire">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+            </div>
+            <h3>Search by category</h3>
+            <p>Music, nightlife, sport, food — filter the whole scene by what you're in the mood for in a tap.</p>
+          </div>
+          <div class="card reveal">
+            <div class="glow fire"></div>
+            <div class="ico fire">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            </div>
+            <h3>See who's going</h3>
+            <p>Find out which events your friends are attending — and turn a night out into a night together.</p>
+          </div>
+          <div class="card reveal">
+            <div class="glow fire"></div>
+            <div class="ico fire">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+            </div>
+            <h3>Discover what's nearby</h3>
+            <p>A live, map-first view of the events happening around you right now — spot the hotspots at a glance.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- HOSTS -->
+    <section id="hosts">
+      <div class="wrap">
+        <div class="sec-head reveal">
+          <div class="sec-tag electric">For hosts &amp; organisers</div>
+          <h2>Run your event like a <span class="grad-electric">pro</span>.</h2>
+          <p>Everything you need to create, sell, and grow — without juggling five different tools.</p>
+        </div>
+
+        <div class="split">
+          <div>
+            <div class="host-feature reveal">
+              <div class="num">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z"/><path d="M13 5v14"/></svg>
+              </div>
+              <div>
+                <h3>Create &amp; sell tickets effortlessly</h3>
+                <p>Spin up an event, set your tiers, and start selling in minutes. Secure checkout and instant QR tickets, built in.</p>
+              </div>
+            </div>
+            <div class="host-feature reveal">
+              <div class="num">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v16a2 2 0 0 0 2 2h16"/><path d="m19 9-5 5-4-4-3 3"/></svg>
+              </div>
+              <div>
+                <h3>Professional insights</h3>
+                <p>Track sales, revenue, and live check-ins, and understand your audience with real-time analytics for every event.</p>
+              </div>
+            </div>
+            <div class="host-feature reveal">
+              <div class="num">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m3 11 18-5v12L3 14v-3Z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/></svg>
+              </div>
+              <div>
+                <h3>Post &amp; promote in one place</h3>
+                <p>Share updates, build hype, and reach the right crowd — promotion and ticketing live on the same platform.</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Dashboard mock -->
+          <div class="dash reveal">
+            <div class="dash-top">
+              <b>Event Insights</b>
+              <span class="pill">● Live</span>
+            </div>
+            <div class="dash-stats">
+              <div class="dash-stat"><span>Revenue</span><b class="grad">R 48.2k</b></div>
+              <div class="dash-stat"><span>Tickets</span><b>312</b></div>
+              <div class="dash-stat"><span>Checked in</span><b>189</b></div>
+            </div>
+            <div class="chart">
+              <div class="bar" style="height:35%"></div>
+              <div class="bar" style="height:55%"></div>
+              <div class="bar" style="height:42%"></div>
+              <div class="bar" style="height:70%"></div>
+              <div class="bar" style="height:60%"></div>
+              <div class="bar" style="height:88%"></div>
+              <div class="bar" style="height:100%"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TRUST -->
+    <section class="trust" style="padding-top: 20px;">
+      <div class="wrap reveal">
+        <div class="trust-card">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/><path d="m9 12 2 2 4-4"/></svg>
+          Payments secured by <b>Paystack</b> · Instant QR tickets · Scan &amp; check in at the door
+        </div>
+      </div>
+    </section>
+
+    <!-- PRICING -->
+    <section id="pricing" style="padding-top: 40px;">
+      <div class="wrap reveal">
+        <div class="price-band">
+          <h3>Simple, fair pricing for hosts.</h3>
+          <p>It's free to list your event. We add a small booking fee at checkout — so you keep <b style="color:var(--ink)">100% of your ticket price</b>, and your share is paid straight to you.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- FINAL CTA -->
+    <section id="get" class="cta-final">
+      <div class="wrap reveal">
+        <h2>The night's already <span class="grad-fire">starting</span>.</h2>
+        <p class="lead" style="margin: 0 auto 4px;">Join GateKeeper and never miss what's happening in your city.</p>
+        <div class="badges">
+          <span class="badge">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M17.05 12.04c-.02-2.3 1.88-3.4 1.96-3.46-1.07-1.56-2.73-1.78-3.32-1.8-1.42-.14-2.76.83-3.48.83-.72 0-1.82-.81-2.99-.79-1.54.02-2.96.89-3.75 2.27-1.6 2.78-.41 6.89 1.15 9.14.76 1.1 1.67 2.34 2.86 2.29 1.15-.05 1.58-.74 2.97-.74 1.39 0 1.78.74 2.99.72 1.24-.02 2.02-1.12 2.78-2.23.88-1.28 1.24-2.52 1.26-2.58-.03-.01-2.42-.93-2.44-3.69M14.8 5.2c.63-.77 1.06-1.83.94-2.9-.91.04-2.02.61-2.67 1.37-.58.68-1.09 1.77-.95 2.81 1.02.08 2.05-.52 2.68-1.28"/></svg>
+            <span class="b-txt"><small>Coming soon on</small><b>the App Store</b></span>
+          </span>
+          <span class="badge">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M3.6 2.2c-.3.3-.5.8-.5 1.4v16.8c0 .6.2 1.1.5 1.4l.1.1L13 12.1v-.2L3.6 2.2m12.1 6.6L5.9 3.2 14.6 11l1.1-2.2M19.8 11l-2.3-1.3-1.3 1.3 1.3 1.3 2.3-1.3c.7-.4.7-1 0-1.3m-3.6 1.3L5.9 20.8l9.8-5.6-1.1-2.9-.4-.3-.1.5"/></svg>
+            <span class="b-txt"><small>Coming soon on</small><b>Google Play</b></span>
+          </span>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- FOOTER -->
+  <footer>
+    <div class="wrap">
+      <div class="foot-grid">
+        <div class="foot-about-col">
+          <a href="#top" class="brand"><img src="logo.png" alt="GateKeeper logo" />Gate<b>Keeper</b></a>
+          <p class="foot-about">
+            GateKeeper is a social event ticketing platform that helps people discover events,
+            buy tickets, and go out with their friends — and helps hosts create, sell, and
+            promote events with professional tools. Proudly built in South Africa.
+          </p>
+        </div>
+        <div class="foot-col">
+          <h5>Product</h5>
+          <a href="#discover">Discover events</a>
+          <a href="#hosts">For hosts</a>
+          <a href="#pricing">Pricing</a>
+          <a href="#get">Get the app</a>
+        </div>
+        <div class="foot-col">
+          <h5>Company</h5>
+          <a href="mailto:hello@gatekeeper.events">Contact us</a>
+          <a href="#">Privacy policy</a>
+          <a href="#">Terms of service</a>
+        </div>
+      </div>
+      <div class="foot-bottom">
+        <span>© <span id="year">2026</span> GateKeeper. All rights reserved.</span>
+        <span class="made">Made with <span style="color:var(--fire-2)">♦</span> in Cape Town, South Africa</span>
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    // Footer year
+    document.getElementById('year').textContent = new Date().getFullYear();
+
+    // Scroll reveal
+    const io = new IntersectionObserver((entries) => {
+      entries.forEach((e) => {
+        if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); }
+      });
+    }, { threshold: 0.15 });
+    document.querySelectorAll('.reveal').forEach((el) => io.observe(el));
+  </script>
+</body>
+</html>
