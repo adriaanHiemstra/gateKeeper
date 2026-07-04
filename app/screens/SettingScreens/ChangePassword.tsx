@@ -1,17 +1,16 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import {
   View,
   Text,
   TextInput,
   TouchableOpacity,
   StyleSheet,
-  ScrollView,
   Alert,
-  KeyboardAvoidingView,
-  Platform,
   ActivityIndicator,
+  findNodeHandle,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { KeyboardAwareScrollView } from "react-native-keyboard-aware-scroll-view";
 import { LinearGradient } from "expo-linear-gradient";
 import { useNavigation } from "@react-navigation/native";
 import { ArrowLeft, Lock, CheckCircle, Eye, EyeOff } from "lucide-react-native";
@@ -34,6 +33,7 @@ const PasswordInput = ({
   show,
   toggleShow,
   placeholder,
+  onFocus,
 }: any) => (
   <View className="mb-6">
     <Text className="text-gray-400 text-xs font-bold mb-2 ml-1 uppercase tracking-wider">
@@ -47,6 +47,7 @@ const PasswordInput = ({
         placeholder={placeholder}
         placeholderTextColor="#666"
         secureTextEntry={!show}
+        onFocus={onFocus}
         className="flex-1 text-white text-lg font-medium h-full"
         style={{ fontFamily: "Jost-Medium" }}
       />
@@ -74,6 +75,14 @@ const ChangePassword = () => {
   // Visibility toggles
   const [showCurrent, setShowCurrent] = useState(false);
   const [showNew, setShowNew] = useState(false);
+
+  // KeyboardAwareScrollView only auto-scrolls when the keyboard first opens —
+  // tapping a different field while it's already up doesn't fire that event,
+  // so each field's onFocus below nudges the scroll view manually.
+  const scrollRef = useRef<any>(null);
+  const handleFocus = (event: any) => {
+    scrollRef.current?.scrollToFocusedInput(findNodeHandle(event.target));
+  };
 
   const handleUpdate = async () => {
     if (!currentPassword || !newPassword || !confirmPassword) {
@@ -134,15 +143,16 @@ const ChangePassword = () => {
       <TopBanner />
 
       <SafeAreaView className="flex-1" edges={["left", "right"]}>
-        <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : "height"}
-          className="flex-1"
+        <KeyboardAwareScrollView
+          ref={scrollRef}
+          className="flex-1 px-6"
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={{ paddingTop: 120, paddingBottom: 140 }}
+          enableOnAndroid={true}
+          extraScrollHeight={120}
+          keyboardShouldPersistTaps="handled"
+          enableAutomaticScroll={true}
         >
-          <ScrollView
-            className="flex-1 px-6"
-            showsVerticalScrollIndicator={false}
-            contentContainerStyle={{ paddingTop: 120, paddingBottom: 140 }}
-          >
             {/* HEADER */}
             <View className="flex-row items-center mb-8">
               <TouchableOpacity
@@ -186,6 +196,7 @@ const ChangePassword = () => {
               show={showCurrent}
               toggleShow={() => setShowCurrent(!showCurrent)}
               placeholder="Enter current password"
+              onFocus={handleFocus}
             />
 
             <PasswordInput
@@ -195,6 +206,7 @@ const ChangePassword = () => {
               show={showNew}
               toggleShow={() => setShowNew(!showNew)}
               placeholder="Enter new password"
+              onFocus={handleFocus}
             />
 
             <PasswordInput
@@ -204,35 +216,35 @@ const ChangePassword = () => {
               show={showNew}
               toggleShow={() => setShowNew(!showNew)}
               placeholder="Re-enter new password"
+              onFocus={handleFocus}
             />
-          </ScrollView>
+        </KeyboardAwareScrollView>
 
-          {/* UPDATE BUTTON */}
-          <View className="absolute bottom-24 left-0 right-0 p-6">
-            <TouchableOpacity
-              activeOpacity={0.8}
-              className={`w-full shadow-lg ${loading ? 'opacity-80' : 'shadow-orange-500/20'}`}
-              onPress={handleUpdate}
-              disabled={loading}
+        {/* UPDATE BUTTON */}
+        <View className="absolute bottom-24 left-0 right-0 p-6">
+          <TouchableOpacity
+            activeOpacity={0.8}
+            className={`w-full shadow-lg ${loading ? 'opacity-80' : 'shadow-orange-500/20'}`}
+            onPress={handleUpdate}
+            disabled={loading}
+          >
+            <LinearGradient
+              {...fireGradient}
+              className="w-full py-4 rounded-full flex-row items-center justify-center"
             >
-              <LinearGradient
-                {...fireGradient}
-                className="w-full py-4 rounded-full flex-row items-center justify-center"
-              >
-                {loading ? (
-                  <ActivityIndicator color="white" />
-                ) : (
-                  <Text
-                    className="text-white text-xl font-bold tracking-wide"
-                    style={{ fontFamily: "Jost-Medium" }}
-                  >
-                    UPDATE PASSWORD
-                  </Text>
-                )}
-              </LinearGradient>
-            </TouchableOpacity>
-          </View>
-        </KeyboardAvoidingView>
+              {loading ? (
+                <ActivityIndicator color="white" />
+              ) : (
+                <Text
+                  className="text-white text-xl font-bold tracking-wide"
+                  style={{ fontFamily: "Jost-Medium" }}
+                >
+                  UPDATE PASSWORD
+                </Text>
+              )}
+            </LinearGradient>
+          </TouchableOpacity>
+        </View>
       </SafeAreaView>
 
       <BottomNav />

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import {
   View,
   Text,
@@ -8,11 +8,10 @@ import {
   Image,
   Alert,
   Modal,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
+  findNodeHandle,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { KeyboardAwareScrollView } from "react-native-keyboard-aware-scroll-view";
 import { LinearGradient } from "expo-linear-gradient";
 import { useNavigation } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
@@ -47,6 +46,14 @@ const Login = () => {
   const [showStaffModal, setShowStaffModal] = useState(false);
   const [staffCode, setStaffCode] = useState("");
   const [staffLoading, setStaffLoading] = useState(false);
+
+  // KeyboardAwareScrollView only auto-scrolls when the keyboard first opens —
+  // tapping a different field while it's already up doesn't fire that event,
+  // so each field's onFocus below nudges the scroll view manually.
+  const scrollRef = useRef<any>(null);
+  const handleFocus = (event: any) => {
+    scrollRef.current?.scrollToFocusedInput(findNodeHandle(event.target));
+  };
 
   const handleLogin = async () => {
     if (!email || !password) {
@@ -124,17 +131,17 @@ const Login = () => {
       <LinearGradient {...bannerGradient} style={StyleSheet.absoluteFill} />
 
       <SafeAreaView className="flex-1">
-        <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : "height"}
-          className="flex-1"
-        >
-          <ScrollView
-            contentContainerStyle={{
-              flexGrow: 1,
-              justifyContent: "center",
-              padding: 24,
-            }}
-            showsVerticalScrollIndicator={false}
+        <KeyboardAwareScrollView
+          ref={scrollRef}
+          contentContainerStyle={{
+            flexGrow: 1,
+            justifyContent: "center",
+            padding: 24,
+          }}
+          showsVerticalScrollIndicator={false}
+          enableOnAndroid={true}
+          extraScrollHeight={120}
+          enableAutomaticScroll={true}
           >
             {/* LOGO & HEADER */}
             <View className="items-center mb-12">
@@ -168,6 +175,7 @@ const Login = () => {
                   onChangeText={setEmail}
                   autoCapitalize="none"
                   keyboardType="email-address"
+                  onFocus={handleFocus}
                   className="flex-1 text-white text-lg font-medium h-full ml-1"
                   style={{ fontFamily: "Jost-Medium" }}
                 />
@@ -187,6 +195,7 @@ const Login = () => {
                   value={password}
                   onChangeText={setPassword}
                   secureTextEntry={!showPassword}
+                  onFocus={handleFocus}
                   className="flex-1 text-white text-lg font-medium h-full ml-1"
                   style={{ fontFamily: "Jost-Medium" }}
                 />
@@ -253,8 +262,7 @@ const Login = () => {
                 Staff / Bouncer Check-in
               </Text>
             </TouchableOpacity>
-          </ScrollView>
-        </KeyboardAvoidingView>
+        </KeyboardAwareScrollView>
       </SafeAreaView>
 
       {/* STAFF LOGIN MODAL */}

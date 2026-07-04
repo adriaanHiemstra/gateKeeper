@@ -1,17 +1,17 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import {
   View,
   Text,
   TextInput,
   TouchableOpacity,
   StyleSheet,
-  ScrollView,
-  KeyboardAvoidingView,
   Platform,
   Alert,
   Modal,
+  findNodeHandle,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { KeyboardAwareScrollView } from "react-native-keyboard-aware-scroll-view";
 import { LinearGradient } from "expo-linear-gradient";
 import { useNavigation } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
@@ -50,6 +50,14 @@ const SignUp = () => {
   const [showDatePicker, setShowDatePicker] = useState(false);
   
   const [loading, setLoading] = useState(false);
+
+  // KeyboardAwareScrollView only auto-scrolls when the keyboard first opens —
+  // tapping a different field while it's already up doesn't fire that event,
+  // so each field's onFocus below nudges the scroll view manually.
+  const scrollRef = useRef<any>(null);
+  const handleFocus = (event: any) => {
+    scrollRef.current?.scrollToFocusedInput(findNodeHandle(event.target));
+  };
 
   const handleSignUp = async () => {
     // 🚨 Added username to the validation check
@@ -102,14 +110,14 @@ const SignUp = () => {
       <LinearGradient {...bannerGradient} style={StyleSheet.absoluteFill} />
 
       <SafeAreaView className="flex-1">
-        <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : "height"}
-          className="flex-1"
+        <KeyboardAwareScrollView
+          ref={scrollRef}
+          contentContainerStyle={{ padding: 24, flexGrow: 1 }}
+          showsVerticalScrollIndicator={false}
+          enableOnAndroid={true}
+          extraScrollHeight={120}
+          enableAutomaticScroll={true}
         >
-          <ScrollView
-            contentContainerStyle={{ padding: 24, flexGrow: 1 }}
-            showsVerticalScrollIndicator={false}
-          >
             <TouchableOpacity
               onPress={() => navigation.goBack()}
               className="w-12 h-12 bg-white/10 rounded-full items-center justify-center mb-6"
@@ -142,6 +150,7 @@ const SignUp = () => {
                     placeholderTextColor="#666"
                     value={name}
                     onChangeText={setName}
+                    onFocus={handleFocus}
                     className="flex-1 text-white text-lg font-medium h-full ml-1"
                     style={{ fontFamily: "Jost-Medium", textAlignVertical: "center" }}
                     autoCapitalize="words"
@@ -161,6 +170,7 @@ const SignUp = () => {
                     placeholderTextColor="#666"
                     value={username}
                     onChangeText={setUsername}
+                    onFocus={handleFocus}
                     className="flex-1 text-white text-lg font-medium h-full ml-1"
                     style={{ fontFamily: "Jost-Medium", textAlignVertical: "center" }}
                     autoCapitalize="none"
@@ -268,6 +278,7 @@ const SignUp = () => {
                     placeholderTextColor="#666"
                     value={email}
                     onChangeText={setEmail}
+                    onFocus={handleFocus}
                     className="flex-1 text-white text-lg font-medium h-full ml-1"
                     style={{ fontFamily: "Jost-Medium", textAlignVertical: "center" }}
                     keyboardType="email-address"
@@ -288,6 +299,7 @@ const SignUp = () => {
                     placeholderTextColor="#666"
                     value={password}
                     onChangeText={setPassword}
+                    onFocus={handleFocus}
                     className="flex-1 text-white text-lg font-medium h-full ml-1"
                     style={{ fontFamily: "Jost-Medium", textAlignVertical: "center" }}
                     secureTextEntry={!showPassword}
@@ -335,8 +347,7 @@ const SignUp = () => {
                 <Text className="text-white font-bold underline">Log In</Text>
               </TouchableOpacity>
             </View>
-          </ScrollView>
-        </KeyboardAvoidingView>
+        </KeyboardAwareScrollView>
       </SafeAreaView>
     </View>
   );

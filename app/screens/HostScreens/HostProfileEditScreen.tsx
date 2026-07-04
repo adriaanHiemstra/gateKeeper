@@ -1,18 +1,17 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   View,
   Text,
   TextInput,
   TouchableOpacity,
   StyleSheet,
-  ScrollView,
   Image,
   Alert,
   ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
+  findNodeHandle,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { KeyboardAwareScrollView } from "react-native-keyboard-aware-scroll-view";
 import { LinearGradient } from "expo-linear-gradient";
 import { useNavigation } from "@react-navigation/native";
 import { Camera, User, AtSign, Link, AlignLeft, Save } from "lucide-react-native";
@@ -38,6 +37,7 @@ const ProfileInput = ({
   onChange,
   multiline = false,
   placeholder,
+  onFocus,
 }: any) => (
   <View className="mb-6">
     <Text className="text-gray-400 text-sm font-bold mb-2 ml-1 uppercase tracking-wider">
@@ -59,6 +59,7 @@ const ProfileInput = ({
         multiline={multiline}
         textAlignVertical={multiline ? "top" : "center"}
         autoCapitalize={label === "Handle (Username)" ? "none" : "sentences"}
+        onFocus={onFocus}
         className="flex-1 text-white text-lg font-medium h-full"
         style={{ fontFamily: "Jost-Medium" }}
       />
@@ -81,6 +82,14 @@ const HostProfileEditScreen = () => {
     require("../../assets/profile-pic-1.png"),
   );
   const [newImageUri, setNewImageUri] = useState<string | null>(null);
+
+  // KeyboardAwareScrollView only auto-scrolls when the keyboard first opens —
+  // tapping a different field while it's already up doesn't fire that event,
+  // so each field's onFocus below nudges the scroll view manually.
+  const scrollRef = useRef<any>(null);
+  const handleFocus = (event: any) => {
+    scrollRef.current?.scrollToFocusedInput(findNodeHandle(event.target));
+  };
 
   // Load the host's real profile (host & user share the same profiles row).
   useEffect(() => {
@@ -212,15 +221,15 @@ const HostProfileEditScreen = () => {
       <HostTopBanner />
 
       <SafeAreaView className="flex-1" edges={["left", "right"]}>
-        <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : "height"}
-          className="flex-1"
-        >
-          <ScrollView
-            className="flex-1 px-6"
-            showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled"
-            contentContainerStyle={{ paddingTop: 120, paddingBottom: 200 }}
+        <KeyboardAwareScrollView
+          ref={scrollRef}
+          className="flex-1 px-6"
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={{ paddingTop: 120, paddingBottom: 200 }}
+          enableOnAndroid={true}
+          extraScrollHeight={120}
+          enableAutomaticScroll={true}
           >
             {/* HEADER */}
             <View className="mb-8">
@@ -265,6 +274,7 @@ const HostProfileEditScreen = () => {
               value={name}
               onChange={setName}
               placeholder="Rockstar Events"
+              onFocus={handleFocus}
             />
 
             <ProfileInput
@@ -273,6 +283,7 @@ const HostProfileEditScreen = () => {
               value={handle}
               onChange={setHandle}
               placeholder="rockstarevents_sa"
+              onFocus={handleFocus}
             />
 
             <ProfileInput
@@ -282,6 +293,7 @@ const HostProfileEditScreen = () => {
               onChange={setBio}
               multiline={true}
               placeholder="What's your vibe?"
+              onFocus={handleFocus}
             />
 
             <ProfileInput
@@ -290,9 +302,9 @@ const HostProfileEditScreen = () => {
               value={website}
               onChange={setWebsite}
               placeholder="https://..."
+              onFocus={handleFocus}
             />
-          </ScrollView>
-        </KeyboardAvoidingView>
+        </KeyboardAwareScrollView>
 
         {/* SAVE BUTTON */}
         <View className="absolute bottom-24 left-0 right-0 p-6">

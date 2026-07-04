@@ -1,16 +1,15 @@
-import React, { useState } from 'react';
-import { 
-  View, 
-  Text, 
-  TextInput, 
-  TouchableOpacity, 
-  StyleSheet, 
-  ScrollView, 
+import React, { useState, useRef } from 'react';
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
   Alert,
-  KeyboardAvoidingView,
-  Platform
+  findNodeHandle
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
 import { Lock, Eye, EyeOff, CheckCircle } from 'lucide-react-native';
@@ -27,6 +26,14 @@ const ResetPassword = () => {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+
+  // KeyboardAwareScrollView only auto-scrolls when the keyboard first opens —
+  // tapping a different field while it's already up doesn't fire that event,
+  // so each field's onFocus below nudges the scroll view manually.
+  const scrollRef = useRef<any>(null);
+  const handleFocus = (event: any) => {
+    scrollRef.current?.scrollToFocusedInput(findNodeHandle(event.target));
+  };
 
   const handleUpdate = async () => {
     if (!password || !confirmPassword) {
@@ -59,12 +66,14 @@ const ResetPassword = () => {
       <LinearGradient {...bannerGradient} style={StyleSheet.absoluteFill} />
 
       <SafeAreaView className="flex-1">
-        <KeyboardAvoidingView 
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            className="flex-1"
+        <KeyboardAwareScrollView
+            ref={scrollRef}
+            contentContainerStyle={{ flexGrow: 1, padding: 24, justifyContent: 'center' }}
+            enableOnAndroid={true}
+            extraScrollHeight={120}
+            enableAutomaticScroll={true}
         >
-            <ScrollView contentContainerStyle={{ flexGrow: 1, padding: 24, justifyContent: 'center' }}>
-                
+
                 <View className="items-center mb-10">
                     <View className="bg-green-500/20 p-4 rounded-full mb-4 border border-green-500/50">
                         <CheckCircle color="#4ade80" size={40} />
@@ -78,12 +87,13 @@ const ResetPassword = () => {
                     <Text className="text-gray-400 text-xs font-bold uppercase mb-2 ml-1">New Password</Text>
                     <View className="flex-row items-center bg-white/10 border border-white/20 rounded-2xl px-4 h-14">
                         <Lock color="white" size={20} className="mr-3 opacity-70" />
-                        <TextInput 
+                        <TextInput
                             placeholder="New Password"
                             placeholderTextColor="#666"
                             value={password}
                             onChangeText={setPassword}
                             secureTextEntry={!showPassword}
+                            onFocus={handleFocus}
                             className="flex-1 text-white text-lg font-medium h-full"
                             style={{ fontFamily: 'Jost-Medium' }}
                         />
@@ -98,12 +108,13 @@ const ResetPassword = () => {
                     <Text className="text-gray-400 text-xs font-bold uppercase mb-2 ml-1">Confirm Password</Text>
                     <View className="flex-row items-center bg-white/10 border border-white/20 rounded-2xl px-4 h-14">
                         <Lock color="white" size={20} className="mr-3 opacity-70" />
-                        <TextInput 
+                        <TextInput
                             placeholder="Confirm Password"
                             placeholderTextColor="#666"
                             value={confirmPassword}
                             onChangeText={setConfirmPassword}
                             secureTextEntry={!showPassword}
+                            onFocus={handleFocus}
                             className="flex-1 text-white text-lg font-medium h-full"
                             style={{ fontFamily: 'Jost-Medium' }}
                         />
@@ -126,8 +137,7 @@ const ResetPassword = () => {
                     </LinearGradient>
                 </TouchableOpacity>
 
-            </ScrollView>
-        </KeyboardAvoidingView>
+        </KeyboardAwareScrollView>
       </SafeAreaView>
     </View>
   );

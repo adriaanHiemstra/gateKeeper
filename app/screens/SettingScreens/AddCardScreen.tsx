@@ -1,16 +1,15 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import {
   View,
   Text,
   TextInput,
   TouchableOpacity,
   StyleSheet,
-  ScrollView,
-  KeyboardAvoidingView,
-  Platform,
   Alert,
+  findNodeHandle,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { KeyboardAwareScrollView } from "react-native-keyboard-aware-scroll-view";
 import { LinearGradient } from "expo-linear-gradient";
 import { useNavigation } from "@react-navigation/native";
 import {
@@ -33,6 +32,14 @@ const AddCardScreen = () => {
   const [expiry, setExpiry] = useState("");
   const [cvv, setCvv] = useState("");
 
+  // KeyboardAwareScrollView only auto-scrolls when the keyboard first opens —
+  // tapping a different field while it's already up doesn't fire that event,
+  // so each field's onFocus below nudges the scroll view manually.
+  const scrollRef = useRef<any>(null);
+  const handleFocus = (event: any) => {
+    scrollRef.current?.scrollToFocusedInput(findNodeHandle(event.target));
+  };
+
   const handleSave = () => {
     if (!cardNumber || !expiry || !cvv) {
       Alert.alert("Missing Details", "Please fill in all card details.");
@@ -49,6 +56,7 @@ const AddCardScreen = () => {
     onChange,
     placeholder,
     keyboardType = "default",
+    onFocus,
   }: any) => (
     <View className="mb-6">
       <Text className="text-gray-400 text-xs font-bold mb-2 ml-1 uppercase tracking-wider">
@@ -62,6 +70,7 @@ const AddCardScreen = () => {
           placeholder={placeholder}
           placeholderTextColor="#666"
           keyboardType={keyboardType}
+          onFocus={onFocus}
           className="flex-1 text-white text-lg font-medium h-full"
           style={{ fontFamily: "Jost-Medium" }}
         />
@@ -75,14 +84,14 @@ const AddCardScreen = () => {
       <TopBanner />
 
       <SafeAreaView className="flex-1" edges={["left", "right"]}>
-        <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : "height"}
-          className="flex-1"
+        <KeyboardAwareScrollView
+          ref={scrollRef}
+          className="flex-1 px-6"
+          contentContainerStyle={{ paddingTop: 120, paddingBottom: 140 }}
+          enableOnAndroid={true}
+          extraScrollHeight={120}
+          enableAutomaticScroll={true}
         >
-          <ScrollView
-            className="flex-1 px-6"
-            contentContainerStyle={{ paddingTop: 120, paddingBottom: 140 }}
-          >
             <View className="flex-row items-center mb-8">
               <TouchableOpacity
                 onPress={() => navigation.goBack()}
@@ -104,6 +113,7 @@ const AddCardScreen = () => {
               value={cardName}
               onChange={setCardName}
               placeholder="e.g. John Doe"
+              onFocus={handleFocus}
             />
             <InputField
               label="Card Number"
@@ -112,6 +122,7 @@ const AddCardScreen = () => {
               onChange={setCardNumber}
               placeholder="0000 0000 0000 0000"
               keyboardType="numeric"
+              onFocus={handleFocus}
             />
 
             <View className="flex-row gap-4">
@@ -123,6 +134,7 @@ const AddCardScreen = () => {
                   onChange={setExpiry}
                   placeholder="MM/YY"
                   keyboardType="numeric"
+                  onFocus={handleFocus}
                 />
               </View>
               <View className="flex-1">
@@ -133,6 +145,7 @@ const AddCardScreen = () => {
                   onChange={setCvv}
                   placeholder="123"
                   keyboardType="numeric"
+                  onFocus={handleFocus}
                 />
               </View>
             </View>
@@ -154,8 +167,7 @@ const AddCardScreen = () => {
                 </Text>
               </LinearGradient>
             </TouchableOpacity>
-          </ScrollView>
-        </KeyboardAvoidingView>
+        </KeyboardAwareScrollView>
       </SafeAreaView>
       <BottomNav />
     </View>

@@ -1,18 +1,17 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   View,
   Text,
   TextInput,
   TouchableOpacity,
   StyleSheet,
-  ScrollView,
   Image,
   Alert,
-  KeyboardAvoidingView,
-  Platform,
   ActivityIndicator,
+  findNodeHandle,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { KeyboardAwareScrollView } from "react-native-keyboard-aware-scroll-view";
 import { LinearGradient } from "expo-linear-gradient";
 import { useNavigation } from "@react-navigation/native";
 import {
@@ -48,6 +47,7 @@ const ProfileInput = ({
   onChange,
   multiline = false,
   placeholder,
+  onFocus,
 }: any) => (
   <View className="mb-6">
     <Text className="text-gray-400 text-xs font-bold mb-2 ml-1 uppercase tracking-wider">
@@ -68,6 +68,7 @@ const ProfileInput = ({
         placeholderTextColor="#666"
         multiline={multiline}
         textAlignVertical={multiline ? "top" : "center"}
+        onFocus={onFocus}
         className="flex-1 text-white text-lg font-medium h-full"
         style={{ fontFamily: "Jost-Medium" }}
       />
@@ -98,6 +99,14 @@ const EditUserProfile = () => {
     require("../../assets/profile-pic-1.png"),
   );
   const [newImageUri, setNewImageUri] = useState<string | null>(null);
+
+  // KeyboardAwareScrollView only auto-scrolls when the keyboard first opens —
+  // tapping a different field while it's already up doesn't fire that event,
+  // so each field's onFocus below nudges the scroll view manually.
+  const scrollRef = useRef<any>(null);
+  const handleFocus = (event: any) => {
+    scrollRef.current?.scrollToFocusedInput(findNodeHandle(event.target));
+  };
 
   // --- FETCH INITIAL DATA ---
   useEffect(() => {
@@ -275,16 +284,16 @@ const EditUserProfile = () => {
       <TopBanner />
 
       <SafeAreaView className="flex-1" edges={["left", "right"]}>
-        <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : "height"}
-          className="flex-1"
+        <KeyboardAwareScrollView
+          ref={scrollRef}
+          className="flex-1 px-6"
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={{ paddingTop: 100, paddingBottom: 140 }}
+          enableOnAndroid={true}
+          extraScrollHeight={120}
+          enableAutomaticScroll={true}
         >
-          <ScrollView
-            className="flex-1 px-6"
-            showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled"
-            contentContainerStyle={{ paddingTop: 100, paddingBottom: 140 }}
-          >
             {/* HEADER */}
             <View className="flex-row items-center mb-8">
               <TouchableOpacity
@@ -338,6 +347,7 @@ const EditUserProfile = () => {
               value={name}
               onChange={setName}
               placeholder="Adriaan Smith"
+              onFocus={handleFocus}
             />
             <ProfileInput
               label="Username"
@@ -345,6 +355,7 @@ const EditUserProfile = () => {
               value={handle}
               onChange={setHandle}
               placeholder="adriaan_za"
+              onFocus={handleFocus}
             />
             <ProfileInput
               label="Location"
@@ -352,6 +363,7 @@ const EditUserProfile = () => {
               value={location}
               onChange={setLocation}
               placeholder="Cape Town, SA"
+              onFocus={handleFocus}
             />
             <ProfileInput
               label="Bio"
@@ -359,6 +371,7 @@ const EditUserProfile = () => {
               onChange={setBio}
               multiline={true}
               placeholder="Tell the community about yourself..."
+              onFocus={handleFocus}
             />
 
             {/* 3. EVENT PREFERENCES (TAGS & SEARCH) */}
@@ -378,6 +391,7 @@ const EditUserProfile = () => {
                   onChangeText={setSearchQuery}
                   placeholder="Search categories..."
                   placeholderTextColor="#666"
+                  onFocus={handleFocus}
                   className="flex-1 ml-2 text-white"
                   style={{ fontFamily: "Jost-Medium" }}
                 />
@@ -437,37 +451,36 @@ const EditUserProfile = () => {
                 )}
               </View>
             </View>
-          </ScrollView>
+        </KeyboardAwareScrollView>
 
-          {/* SAVE BUTTON */}
-          <View className="absolute bottom-0 left-0 right-0 p-6 bg-[#121212]/90 border-t border-white/5 pb-10">
-            <TouchableOpacity
-              activeOpacity={0.9}
-              className="w-full shadow-lg shadow-orange-500/30"
-              onPress={handleSave}
-              disabled={saving}
+        {/* SAVE BUTTON */}
+        <View className="absolute bottom-0 left-0 right-0 p-6 bg-[#121212]/90 border-t border-white/5 pb-10">
+          <TouchableOpacity
+            activeOpacity={0.9}
+            className="w-full shadow-lg shadow-orange-500/30"
+            onPress={handleSave}
+            disabled={saving}
+          >
+            <LinearGradient
+              {...fireGradient}
+              className={`w-full py-4 rounded-xl flex-row items-center justify-center ${saving ? "opacity-70" : ""}`}
             >
-              <LinearGradient
-                {...fireGradient}
-                className={`w-full py-4 rounded-xl flex-row items-center justify-center ${saving ? "opacity-70" : ""}`}
-              >
-                {saving ? (
-                  <ActivityIndicator color="white" size="small" />
-                ) : (
-                  <>
-                    <Save color="white" size={20} className="mr-2" />
-                    <Text
-                      className="text-white text-xl ml-2 font-bold tracking-wide"
-                      style={{ fontFamily: "Jost-Medium" }}
-                    >
-                      SAVE CHANGES
-                    </Text>
-                  </>
-                )}
-              </LinearGradient>
-            </TouchableOpacity>
-          </View>
-        </KeyboardAvoidingView>
+              {saving ? (
+                <ActivityIndicator color="white" size="small" />
+              ) : (
+                <>
+                  <Save color="white" size={20} className="mr-2" />
+                  <Text
+                    className="text-white text-xl ml-2 font-bold tracking-wide"
+                    style={{ fontFamily: "Jost-Medium" }}
+                  >
+                    SAVE CHANGES
+                  </Text>
+                </>
+              )}
+            </LinearGradient>
+          </TouchableOpacity>
+        </View>
       </SafeAreaView>
     </View>
   );

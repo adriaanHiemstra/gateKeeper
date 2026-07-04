@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -9,8 +9,10 @@ import {
   Alert,
   ActivityIndicator,
   Modal,
+  findNodeHandle,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { KeyboardAwareScrollView } from "react-native-keyboard-aware-scroll-view";
 import { LinearGradient } from "expo-linear-gradient";
 import { useNavigation } from "@react-navigation/native";
 import {
@@ -60,6 +62,14 @@ const PayoutsSetupScreen = () => {
   } | null>(null);
   const [accountNumber, setAccountNumber] = useState("");
   const [bankPickerOpen, setBankPickerOpen] = useState(false);
+
+  // KeyboardAwareScrollView only auto-scrolls when the keyboard first opens —
+  // tapping a different field while it's already up doesn't fire that event,
+  // so each field's onFocus below nudges the scroll view manually.
+  const scrollRef = useRef<any>(null);
+  const handleFocus = (event: any) => {
+    scrollRef.current?.scrollToFocusedInput(findNodeHandle(event.target));
+  };
 
   // Load the host's profile to see if they've already linked a payout account.
   useEffect(() => {
@@ -154,10 +164,14 @@ const PayoutsSetupScreen = () => {
       <HostTopBanner />
 
       <SafeAreaView className="flex-1" edges={["left", "right"]}>
-        <ScrollView
+        <KeyboardAwareScrollView
+          ref={scrollRef}
           className="flex-1 px-6"
           keyboardShouldPersistTaps="handled"
           contentContainerStyle={{ paddingTop: 120, paddingBottom: 140 }}
+          enableOnAndroid={true}
+          extraScrollHeight={120}
+          enableAutomaticScroll={true}
         >
           {/* Header */}
           <View className="flex-row items-center mb-8">
@@ -253,6 +267,7 @@ const PayoutsSetupScreen = () => {
                 placeholderTextColor="#666"
                 value={businessName}
                 onChangeText={setBusinessName}
+                onFocus={handleFocus}
                 className="bg-black/40 border border-white/10 rounded-xl px-4 h-12 text-white font-medium mb-4"
                 style={{ fontFamily: "Jost-Medium" }}
               />
@@ -282,6 +297,7 @@ const PayoutsSetupScreen = () => {
                 keyboardType="numeric"
                 value={accountNumber}
                 onChangeText={setAccountNumber}
+                onFocus={handleFocus}
                 className="bg-black/40 border border-white/10 rounded-xl px-4 h-12 text-white font-medium mb-6"
                 style={{ fontFamily: "Jost-Medium" }}
               />
@@ -357,7 +373,7 @@ const PayoutsSetupScreen = () => {
               fee is deducted automatically — there's nothing to invoice.
             </Text>
           </View>
-        </ScrollView>
+        </KeyboardAwareScrollView>
       </SafeAreaView>
 
       {/* BANK PICKER */}
