@@ -38,6 +38,7 @@ import {
   Hash,
   Sparkles,
   Star,
+  Link,
 } from "lucide-react-native";
 import * as ImagePicker from "expo-image-picker";
 import { KeyboardAwareScrollView } from "react-native-keyboard-aware-scroll-view";
@@ -174,6 +175,12 @@ const CreateEventScreen = () => {
   const [tickets, setTickets] = useState<TicketTier[]>([
     { name: "General Admission", price: "150", quantity: "100", active: true },
   ]);
+
+  // Informational-only events (meetups, free hangouts, events that just point
+  // people to an external site) skip ticket tiers entirely — same shape as
+  // events imported by the scrapers (no ticket_tiers rows, optional ticket_url).
+  const [requiresTickets, setRequiresTickets] = useState(true);
+  const [ticketUrl, setTicketUrl] = useState("");
 
   const [showTicketModal, setShowTicketModal] = useState(false);
   const [editingTicketIndex, setEditingTicketIndex] = useState<number | null>(
@@ -442,6 +449,8 @@ const CreateEventScreen = () => {
           //tags: selectedTags,
           is_public: isPublic,
           categories: selectedTags.length > 0 ? selectedTags : ["Other"],
+          requires_tickets: requiresTickets,
+          ticket_url: requiresTickets ? null : ticketUrl.trim() || null,
         })
         .select()
         .single();
@@ -450,8 +459,8 @@ const CreateEventScreen = () => {
 
       const newEventId = eventData.id;
 
-      // 5. INSERT TICKETS
-      if (tickets.length > 0) {
+      // 5. INSERT TICKETS — skipped entirely for an info-only event.
+      if (requiresTickets && tickets.length > 0) {
         const tiersToInsert = tickets.map((t) => ({
           event_id: newEventId,
           name: t.name,
@@ -665,81 +674,112 @@ const CreateEventScreen = () => {
             onFocus={scrollToInput(mainScrollRef)}
           />
 
-          {/* ... TICKET TIERS & SWITCH ... */}
-          <View className="mb-8">
-            <View className="flex-row justify-between items-end mb-4">
-              <Text className="text-white text-xl font-bold">Ticket Tiers</Text>
-              <Text className="text-gray-400 text-xs font-bold uppercase tracking-wider">
-                {tickets.length} Types
+          {/* ... TICKETING MODE SWITCH ... */}
+          <View className="flex-row justify-between items-center bg-white/5 p-5 rounded-2xl mb-8 border border-white/5">
+            <View className="flex-1 mr-4">
+              <Text className="text-white font-bold text-lg">Sell Tickets</Text>
+              <Text className="text-gray-400 text-xs mt-1">
+                Turn off for info-only events (meetups, free hangouts) — no
+                tiers, just the details and an optional link.
               </Text>
             </View>
+            <CustomSwitch
+              value={requiresTickets}
+              onValueChange={setRequiresTickets}
+            />
+          </View>
 
-            {tickets.map((ticket, index) => (
-              <TouchableOpacity
-                key={index}
-                onPress={() => openTicketModal(index)}
-                activeOpacity={0.7}
-                className={`rounded-2xl p-5 mb-3 flex-row items-center justify-between border ${
-                  ticket.active
-                    ? "bg-green-500/10 border-green-500/30"
-                    : "bg-white/5 border-white/10"
-                }`}
-              >
-                <View className="flex-1">
-                  <View className="flex-row items-center mb-2">
-                    <Ticket
-                      color={ticket.active ? "#4ade80" : "white"}
-                      size={20}
-                      className="mr-3"
-                    />
-                    <Text
-                      className={`text-xl font-bold mr-3 ml-2 ${
-                        ticket.active ? "text-white" : "text-gray-400"
-                      }`}
-                    >
-                      {ticket.name}
-                    </Text>
-                  </View>
-                  <View className="flex-row items-center pl-8">
-                    <Tag color="#666" size={14} className="mr-1" />
-                    <Text className="text-gray-400 text-sm font-medium mr-4 ml-1">
-                      {ticket.quantity
-                        ? `${ticket.quantity} Left`
-                        : "Unlimited"}
-                    </Text>
-                  </View>
-                </View>
+          {requiresTickets ? (
+            /* ... TICKET TIERS & SWITCH ... */
+            <View className="mb-8">
+              <View className="flex-row justify-between items-end mb-4">
+                <Text className="text-white text-xl font-bold">Ticket Tiers</Text>
+                <Text className="text-gray-400 text-xs font-bold uppercase tracking-wider">
+                  {tickets.length} Types
+                </Text>
+              </View>
 
-                <View
-                  className={`px-4 py-2 rounded-xl border ml-3 ${
+              {tickets.map((ticket, index) => (
+                <TouchableOpacity
+                  key={index}
+                  onPress={() => openTicketModal(index)}
+                  activeOpacity={0.7}
+                  className={`rounded-2xl p-5 mb-3 flex-row items-center justify-between border ${
                     ticket.active
-                      ? "bg-black/40 border-green-500/20"
-                      : "bg-black/40 border-white/5"
+                      ? "bg-green-500/10 border-green-500/30"
+                      : "bg-white/5 border-white/10"
                   }`}
                 >
-                  <Text
-                    className={`text-lg font-bold ${
-                      ticket.active ? "text-green-400" : "text-white"
+                  <View className="flex-1">
+                    <View className="flex-row items-center mb-2">
+                      <Ticket
+                        color={ticket.active ? "#4ade80" : "white"}
+                        size={20}
+                        className="mr-3"
+                      />
+                      <Text
+                        className={`text-xl font-bold mr-3 ml-2 ${
+                          ticket.active ? "text-white" : "text-gray-400"
+                        }`}
+                      >
+                        {ticket.name}
+                      </Text>
+                    </View>
+                    <View className="flex-row items-center pl-8">
+                      <Tag color="#666" size={14} className="mr-1" />
+                      <Text className="text-gray-400 text-sm font-medium mr-4 ml-1">
+                        {ticket.quantity
+                          ? `${ticket.quantity} Left`
+                          : "Unlimited"}
+                      </Text>
+                    </View>
+                  </View>
+
+                  <View
+                    className={`px-4 py-2 rounded-xl border ml-3 ${
+                      ticket.active
+                        ? "bg-black/40 border-green-500/20"
+                        : "bg-black/40 border-white/5"
                     }`}
                   >
-                    R {ticket.price}
-                  </Text>
-                </View>
-              </TouchableOpacity>
-            ))}
+                    <Text
+                      className={`text-lg font-bold ${
+                        ticket.active ? "text-green-400" : "text-white"
+                      }`}
+                    >
+                      R {ticket.price}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              ))}
 
-            <TouchableOpacity
-              onPress={() => openTicketModal()}
-              className="flex-row items-center justify-center bg-white/5 border border-dashed border-white/30 rounded-2xl py-5 mt-2"
-            >
-              <View className="bg-purple-500/20 p-2 rounded-full mr-3">
-                <Plus color="#D087FF" size={20} />
-              </View>
-              <Text className="text-purple-300 font-bold text-lg">
-                Add Ticket Tier
+              <TouchableOpacity
+                onPress={() => openTicketModal()}
+                className="flex-row items-center justify-center bg-white/5 border border-dashed border-white/30 rounded-2xl py-5 mt-2"
+              >
+                <View className="bg-purple-500/20 p-2 rounded-full mr-3">
+                  <Plus color="#D087FF" size={20} />
+                </View>
+                <Text className="text-purple-300 font-bold text-lg">
+                  Add Ticket Tier
+                </Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <View className="mb-8">
+              <Text className="text-white text-xl font-bold mb-4">
+                Website / More Info
               </Text>
-            </TouchableOpacity>
-          </View>
+              <InputField
+                icon={<Link color="white" size={20} />}
+                placeholder="https://your-event-site.com (optional)"
+                value={ticketUrl}
+                onChange={setTicketUrl}
+                keyboardType="url"
+                onFocus={scrollToInput(mainScrollRef)}
+              />
+            </View>
+          )}
 
           {/* ... PUBLIC SWITCH ... */}
           <View className="flex-row justify-between items-center bg-white/5 p-5 rounded-2xl mb-8 border border-white/5">

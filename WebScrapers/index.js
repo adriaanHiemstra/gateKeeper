@@ -58,11 +58,12 @@ async function runAllScrapers() {
         finalizedEvents.push({
           ...event,              // Keep the raw data (title, url, date)
           host_id: BOT_HOST_ID,
-          lat: geo.lat, 
+          lat: geo.lat,
           lng: geo.lng,
           categories: aiTags,    // Add our synced AI tags
           is_public: true,
-          media_type: "image"
+          media_type: "image",
+          requires_tickets: false, // Scraped events never get ticket_tiers rows
         });
       }
 

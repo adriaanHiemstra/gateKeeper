@@ -39,6 +39,7 @@ import {
   Trash2,
   MoreHorizontal,
   RefreshCw,
+  Link,
 } from "lucide-react-native";
 import * as ImagePicker from "expo-image-picker";
 import { KeyboardAwareScrollView } from "react-native-keyboard-aware-scroll-view";
@@ -191,6 +192,12 @@ const EditEventScreen = () => {
   const [tickets, setTickets] = useState<any[]>([]);
   const [deletedTicketIds, setDeletedTicketIds] = useState<string[]>([]);
 
+  // Informational-only events (meetups, free hangouts, events that just point
+  // people to an external site) skip ticket tiers entirely — same shape as
+  // events imported by the scrapers (no ticket_tiers rows, optional ticket_url).
+  const [requiresTickets, setRequiresTickets] = useState(true);
+  const [ticketUrl, setTicketUrl] = useState("");
+
   // Modals
   const [showTicketModal, setShowTicketModal] = useState(false);
   const [editingTicketIndex, setEditingTicketIndex] = useState<number | null>(
@@ -309,7 +316,9 @@ const fetchEventData = async () => {
       setLocationLng(data.lng || 0);
 
       setIsPublic(data.is_public);
-      
+      setRequiresTickets(data.requires_tickets ?? true);
+      setTicketUrl(data.ticket_url || "");
+
       // 🚨 FIX: Load from the 'categories' DB column, not 'tags'!
       setSelectedTags(data.categories || []);
 
@@ -355,6 +364,7 @@ const fetchEventData = async () => {
           price: t.price.toString(),
           quantity: t.quantity_total.toString(),
           active: t.is_active,
+          sold: t.quantity_sold || 0,
         }));
         setTickets(formattedTiers);
       }
@@ -469,6 +479,23 @@ const fetchEventData = async () => {
     }
   };
 
+  // Switching an already-ticketed event to info-only would delete its tiers
+  // on save (see handleSave) — refuse if any of them have real sales, since
+  // that would strand buyers who already checked out.
+  const handleToggleRequiresTickets = (value: boolean) => {
+    if (!value) {
+      const soldCount = tickets.reduce((sum, t) => sum + (t.sold || 0), 0);
+      if (soldCount > 0) {
+        Alert.alert(
+          "Can't Disable Tickets",
+          `This event has ${soldCount} ticket(s) already sold, so it can't be switched to an info-only event.`
+        );
+        return;
+      }
+    }
+    setRequiresTickets(value);
+  };
+
   // --- MAIN SAVE HANDLER ---
 // --- MAIN SAVE HANDLER ---
   const handleSave = async () => {
@@ -528,8 +555,10 @@ const fetchEventData = async () => {
           date: startISO,
           end_date: endISO,
           is_public: isPublic,
+          requires_tickets: requiresTickets,
+          ticket_url: requiresTickets ? null : ticketUrl.trim() || null,
           // 🚨 FIX: Removes non-existent tags/category columns and saves cleanly to the 'categories' array!
-          categories: selectedTags.length > 0 ? selectedTags : ["Other"], 
+          categories: selectedTags.length > 0 ? selectedTags : ["Other"],
           images: processedImages,
           banner_url: processedImages[0] || null,
         })
@@ -537,31 +566,41 @@ const fetchEventData = async () => {
 
       if (eventError) throw eventError;
 
-      // 4. Ticket Deletions
-      if (deletedTicketIds.length > 0) {
-        const { error: deleteError } = await supabase
+      if (!requiresTickets) {
+        // Switched to info-only — drop any existing tiers. handleToggleRequiresTickets
+        // already refused this if any of them had real sales.
+        const { error: clearError } = await supabase
           .from("ticket_tiers")
           .delete()
-          .in("id", deletedTicketIds);
-        if (deleteError) throw deleteError;
-      }
+          .eq("event_id", eventId);
+        if (clearError) throw clearError;
+      } else {
+        // 4. Ticket Deletions
+        if (deletedTicketIds.length > 0) {
+          const { error: deleteError } = await supabase
+            .from("ticket_tiers")
+            .delete()
+            .in("id", deletedTicketIds);
+          if (deleteError) throw deleteError;
+        }
 
-      // 5. Ticket Updates/Inserts
-      if (tickets.length > 0) {
-        const tiersData = tickets.map((t) => ({
-          event_id: eventId,
-          name: t.name,
-          // 🚨 FIX: Added default fallback numbers so empty fields don't crash Supabase!
-          price: parseFloat(t.price) || 0,
-          quantity_total: parseInt(t.quantity) || 100,
-          is_active: t.active,
-          id: t.id || generateUUID(),
-        }));
+        // 5. Ticket Updates/Inserts
+        if (tickets.length > 0) {
+          const tiersData = tickets.map((t) => ({
+            event_id: eventId,
+            name: t.name,
+            // 🚨 FIX: Added default fallback numbers so empty fields don't crash Supabase!
+            price: parseFloat(t.price) || 0,
+            quantity_total: parseInt(t.quantity) || 100,
+            is_active: t.active,
+            id: t.id || generateUUID(),
+          }));
 
-        const { error: tierError } = await supabase
-          .from("ticket_tiers")
-          .upsert(tiersData);
-        if (tierError) throw tierError;
+          const { error: tierError } = await supabase
+            .from("ticket_tiers")
+            .upsert(tiersData);
+          if (tierError) throw tierError;
+        }
       }
 
       Alert.alert("Success", "Event updated successfully!");
@@ -761,65 +800,96 @@ const fetchEventData = async () => {
             onFocus={scrollToInput(mainScrollRef)}
           />
 
-          {/* TICKETS */}
-          <View className="mb-8">
-            <View className="flex-row justify-between items-end mb-4">
-              <Text className="text-white text-xl font-bold">Ticket Tiers</Text>
-              <TouchableOpacity onPress={() => openTicketModal()}>
-                <Text className="text-purple-400 font-bold">Add New</Text>
-              </TouchableOpacity>
+          {/* TICKETING MODE */}
+          <View className="flex-row justify-between items-center bg-white/5 p-5 rounded-2xl mb-8 border border-white/5">
+            <View className="flex-1 mr-4">
+              <Text className="text-white font-bold text-lg">Sell Tickets</Text>
+              <Text className="text-gray-400 text-xs mt-1">
+                Turn off for info-only events (meetups, free hangouts) — no
+                tiers, just the details and an optional link.
+              </Text>
             </View>
+            <CustomSwitch
+              value={requiresTickets}
+              onValueChange={handleToggleRequiresTickets}
+            />
+          </View>
 
-            {tickets.map((t, i) => (
-              <TouchableOpacity
-                key={i}
-                onPress={() => openTicketModal(i)}
-                className={`rounded-2xl p-5 mb-3 flex-row items-center justify-between border ${
-                  t.active
-                    ? "bg-green-500/10 border-green-500/30"
-                    : "bg-white/5 border-white/10"
-                }`}
-              >
-                <View className="flex-1">
-                  <View className="flex-row items-center mb-2">
-                    <Ticket
-                      color={t.active ? "#4ade80" : "white"}
-                      size={20}
-                      className="mr-3"
-                    />
-                    <Text
-                      className={`text-xl font-bold mr-3 ml-2 ${
-                        t.active ? "text-white" : "text-gray-400"
-                      }`}
-                    >
-                      {t.name}
-                    </Text>
-                  </View>
-                  <View className="flex-row items-center pl-8">
-                    <Tag color="#666" size={14} className="mr-1" />
-                    <Text className="text-gray-400 text-sm font-medium mr-4 ml-1">
-                      {t.quantity} Available
-                    </Text>
-                  </View>
-                </View>
-                <View
-                  className={`px-4 py-2 rounded-xl border ml-3 ${
+          {requiresTickets ? (
+            /* TICKETS */
+            <View className="mb-8">
+              <View className="flex-row justify-between items-end mb-4">
+                <Text className="text-white text-xl font-bold">Ticket Tiers</Text>
+                <TouchableOpacity onPress={() => openTicketModal()}>
+                  <Text className="text-purple-400 font-bold">Add New</Text>
+                </TouchableOpacity>
+              </View>
+
+              {tickets.map((t, i) => (
+                <TouchableOpacity
+                  key={i}
+                  onPress={() => openTicketModal(i)}
+                  className={`rounded-2xl p-5 mb-3 flex-row items-center justify-between border ${
                     t.active
-                      ? "bg-black/40 border-green-500/20"
-                      : "bg-black/40 border-white/5"
+                      ? "bg-green-500/10 border-green-500/30"
+                      : "bg-white/5 border-white/10"
                   }`}
                 >
-                  <Text
-                    className={`text-lg font-bold ${
-                      t.active ? "text-green-400" : "text-white"
+                  <View className="flex-1">
+                    <View className="flex-row items-center mb-2">
+                      <Ticket
+                        color={t.active ? "#4ade80" : "white"}
+                        size={20}
+                        className="mr-3"
+                      />
+                      <Text
+                        className={`text-xl font-bold mr-3 ml-2 ${
+                          t.active ? "text-white" : "text-gray-400"
+                        }`}
+                      >
+                        {t.name}
+                      </Text>
+                    </View>
+                    <View className="flex-row items-center pl-8">
+                      <Tag color="#666" size={14} className="mr-1" />
+                      <Text className="text-gray-400 text-sm font-medium mr-4 ml-1">
+                        {t.quantity} Available
+                      </Text>
+                    </View>
+                  </View>
+                  <View
+                    className={`px-4 py-2 rounded-xl border ml-3 ${
+                      t.active
+                        ? "bg-black/40 border-green-500/20"
+                        : "bg-black/40 border-white/5"
                     }`}
                   >
-                    R {t.price}
-                  </Text>
-                </View>
-              </TouchableOpacity>
-            ))}
-          </View>
+                    <Text
+                      className={`text-lg font-bold ${
+                        t.active ? "text-green-400" : "text-white"
+                      }`}
+                    >
+                      R {t.price}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </View>
+          ) : (
+            <View className="mb-8">
+              <Text className="text-white text-xl font-bold mb-4">
+                Website / More Info
+              </Text>
+              <InputField
+                icon={<Link color="white" size={20} />}
+                placeholder="https://your-event-site.com (optional)"
+                value={ticketUrl}
+                onChange={setTicketUrl}
+                keyboardType="url"
+                onFocus={scrollToInput(mainScrollRef)}
+              />
+            </View>
+          )}
 
           {/* PUBLIC TOGGLE */}
           <View className="flex-row justify-between items-center bg-white/5 p-5 rounded-2xl mb-8 border border-white/5">

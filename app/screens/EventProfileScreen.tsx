@@ -281,6 +281,9 @@ const EventProfileScreen = () => {
   }
 
   const ticketUrl = displayEvent?.ticket_url;
+  // Info-only events (no ticket_tiers, e.g. meetups or scraped listings)
+  // default to true when the column predates this event's row.
+  const requiresTickets = displayEvent?.requires_tickets ?? true;
 
   // 🔥 SAFELY PARSE CATEGORIES FOR TAGS
   let parsedTags: string[] = [];
@@ -750,43 +753,51 @@ const EventProfileScreen = () => {
           </View>
         </ScrollView>
 
-        {/* BOTTOM ACTION BAR */}
-        <View className="absolute bottom-0 left-0 right-0 bg-[#121212]/95 border-t border-white/10 p-6 pb-8 flex-row items-center justify-between">
-          <View className="flex-1 mr-4">
-            <Text className="text-gray-400 text-xs font-bold uppercase">
-              {isFree ? "ADMISSION" : "TICKETS"}
-            </Text>
-            <Text
-              className="text-white text-2xl font-bold"
-              numberOfLines={1}
-              adjustsFontSizeToFit
-            >
-              {displayPrice}
-            </Text>
-          </View>
-
-          <TouchableOpacity
-            activeOpacity={0.9}
-            className="w-[55%] shadow-lg shadow-orange-500/40"
-            onPress={handleTicketPress}
-          >
-            <LinearGradient
-              {...fireGradient}
-              className="w-full py-4 rounded-2xl items-center justify-center"
-            >
-              <Text
-                className="text-white text-lg font-bold tracking-wide"
-                style={{ fontFamily: "Jost-Medium" }}
-              >
-                {isFree
-                  ? "GET TICKETS"
-                  : ticketUrl
-                    ? "BUY ONLINE"
-                    : "BUY TICKETS"}
+        {/* BOTTOM ACTION BAR — informational events with nothing to link to
+            skip this entirely, since there's nothing actionable to show.
+            Gated on !loading too: until the real row loads, requiresTickets
+            falls back to the nav params (which never carry that field) and
+            would otherwise flash a bogus "Buy Tickets" button. */}
+        {!loading && (requiresTickets || ticketUrl) && (
+          <View className="absolute bottom-0 left-0 right-0 bg-[#121212]/95 border-t border-white/10 p-6 pb-8 flex-row items-center justify-between">
+            <View className="flex-1 mr-4">
+              <Text className="text-gray-400 text-xs font-bold uppercase">
+                {!requiresTickets ? "MORE INFO" : isFree ? "ADMISSION" : "TICKETS"}
               </Text>
-            </LinearGradient>
-          </TouchableOpacity>
-        </View>
+              <Text
+                className="text-white text-2xl font-bold"
+                numberOfLines={1}
+                adjustsFontSizeToFit
+              >
+                {!requiresTickets ? "Details Online" : displayPrice}
+              </Text>
+            </View>
+
+            <TouchableOpacity
+              activeOpacity={0.9}
+              className="w-[55%] shadow-lg shadow-orange-500/40"
+              onPress={handleTicketPress}
+            >
+              <LinearGradient
+                {...fireGradient}
+                className="w-full py-4 rounded-2xl items-center justify-center"
+              >
+                <Text
+                  className="text-white text-lg font-bold tracking-wide"
+                  style={{ fontFamily: "Jost-Medium" }}
+                >
+                  {!requiresTickets
+                    ? "VISIT WEBSITE"
+                    : isFree
+                      ? "GET TICKETS"
+                      : ticketUrl
+                        ? "BUY ONLINE"
+                        : "BUY TICKETS"}
+                </Text>
+              </LinearGradient>
+            </TouchableOpacity>
+          </View>
+        )}
       </SafeAreaView>
 
       {/* FRIENDS GOING MODAL */}
