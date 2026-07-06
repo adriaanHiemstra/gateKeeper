@@ -56,13 +56,17 @@ const fetchAnalytics = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      const { data: events, error: eventError } = await supabase
+      const { data: allEvents, error: eventError } = await supabase
         .from("events")
         .select("*")
         .eq("host_id", user.id);
 
       if (eventError) throw eventError;
-      if (!events || events.length === 0) {
+
+      // Info-only events never sell tickets, so they have nothing for this
+      // screen to report on — leave them out entirely.
+      const events = (allEvents || []).filter((e) => e.requires_tickets ?? true);
+      if (events.length === 0) {
         setEventsDB([]);
         return;
       }

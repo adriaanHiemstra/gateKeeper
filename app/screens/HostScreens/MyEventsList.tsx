@@ -111,8 +111,13 @@ const MyEventsList = () => {
       };
 
       events.forEach((event) => {
-        // Filter tickets/tiers for this specific event
-        const eventTickets = allTickets.filter((t) => t.event_id === event.id);
+        const requiresTickets = event.requires_tickets ?? true;
+
+        // Filter tickets/tiers for this specific event — info-only events
+        // never have tiers/tickets of their own, so skip the math entirely.
+        const eventTickets = requiresTickets
+          ? allTickets.filter((t) => t.event_id === event.id)
+          : [];
 
         // Calculate Revenue: Map ticket -> tier -> price
         const revenue = eventTickets.reduce((sum, ticket) => {
@@ -126,6 +131,7 @@ const MyEventsList = () => {
           date: new Date(event.date).toLocaleDateString(),
           rawDate: new Date(event.date), // For sorting
           location: event.location_text || "Location TBA",
+          requiresTickets,
           sold: eventTickets.length,
           revenue: `R ${revenue.toLocaleString()}`,
           image: event.banner_url
@@ -279,8 +285,8 @@ const MyEventsList = () => {
             {item.title}
           </Text>
 
-          {/* Revenue Label */}
-          {activeTab !== "drafts" && (
+          {/* Revenue Label — info-only events have nothing to sell */}
+          {activeTab !== "drafts" && item.requiresTickets && (
             <View className="items-end">
               <Text className="text-gray-400 text-xs font-medium uppercase tracking-wide mb-0.5">
                 Revenue
@@ -306,12 +312,14 @@ const MyEventsList = () => {
         <View className="flex-row gap-3 pt-3 border-t border-white/10">
           {activeTab !== "drafts" ? (
             <>
-              <View className="flex-row items-center bg-white/10 px-3 py-1 rounded-lg">
-                <Ticket color="#D087FF" size={14} className="mr-3" />
-                <Text className="text-white font-medium text-xs ml-2">
-                  {item.sold} Sold
-                </Text>
-              </View>
+              {item.requiresTickets && (
+                <View className="flex-row items-center bg-white/10 px-3 py-1 rounded-lg">
+                  <Ticket color="#D087FF" size={14} className="mr-3" />
+                  <Text className="text-white font-medium text-xs ml-2">
+                    {item.sold} Sold
+                  </Text>
+                </View>
+              )}
               <View className="flex-row items-center bg-white/10 px-3 py-1 rounded-lg">
                 <Text className="text-purple-300 font-medium text-xs">
                   Manage Event →

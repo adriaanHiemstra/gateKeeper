@@ -60,6 +60,10 @@ const ManageEventScreen = () => {
   // would let a host silently rewrite what guests already bought a ticket to,
   // or push the date into the future to "revive" a finished event.
   const [isPastEvent, setIsPastEvent] = useState(false);
+  // Info-only events (no ticket_tiers) have nothing to sell, scan, or track
+  // attendees for — their management surface is limited to the actions that
+  // still apply: editing details, posting content, and promoting the event.
+  const [requiresTickets, setRequiresTickets] = useState(true);
 
   // Stats
   const [stats, setStats] = useState({
@@ -111,8 +115,13 @@ const ManageEventScreen = () => {
     try {
       // ⚡️ PERFORMANCE: Promise.all fetches everything in parallel
       const [eventRes, tiersRes, salesRes] = await Promise.all([
-        // 1. Get Title (+ date, to know if this event has already happened)
-        supabase.from("events").select("title, date").eq("id", eventId).single(),
+        // 1. Get Title (+ date/requires_tickets, to know if this event has
+        // already happened and whether it's an info-only event)
+        supabase
+          .from("events")
+          .select("title, date, requires_tickets")
+          .eq("id", eventId)
+          .single(),
 
         // 2. Get Tiers (Capacity)
         supabase.from("ticket_tiers").select("*").eq("event_id", eventId),
@@ -131,6 +140,7 @@ const ManageEventScreen = () => {
 
       setEventTitle(eventRes.data.title);
       setIsPastEvent(new Date(eventRes.data.date) < new Date());
+      setRequiresTickets(eventRes.data.requires_tickets ?? true);
 
       // Process Data
       const ticketData = salesRes.data || [];
@@ -247,44 +257,46 @@ const ManageEventScreen = () => {
             />
           ) : (
             <>
-              {/* 1. HIGH LEVEL STATS */}
-              <View className="flex-row gap-4 mb-8">
-                <LinearGradient
-                  {...electricGradient}
-                  className="flex-1 rounded-2xl p-5 shadow-lg shadow-purple-900/50"
-                >
-                  <View className="flex-row justify-between items-start mb-2">
-                    <CreditCard color="white" size={20} opacity={0.8} />
-                    {/*<Text className="text-green-300 font-bold text-xs">
-                      +15%
-                    </Text>*/}
-                  </View>
-                  <Text className="text-white/80 text-sm font-medium">
-                    Total Sales
-                  </Text>
-                  <Text className="text-white text-2xl font-bold">
-                    R {stats.revenue.toLocaleString()}
-                  </Text>
-                </LinearGradient>
-
-                <View className="flex-1 bg-white/5 border border-white/10 rounded-2xl p-5">
-                  <View className="flex-row justify-between items-start mb-2">
-                    <TrendingUp color="#D087FF" size={20} />
-                    {/*<Text className="text-white/60 text-xs">
-                      {stats.percentageSold}% Cap
-                    </Text>*/}
-                  </View>
-                  <Text className="text-gray-400 text-sm font-medium">
-                    Tickets Sold
-                  </Text>
-                  <Text className="text-white text-2xl font-bold">
-                    {stats.soldCount}{" "}
-                    <Text className="text-gray-500 text-sm">
-                      / {stats.totalCapacity}
+              {/* 1. HIGH LEVEL STATS — info-only events have nothing to sell */}
+              {requiresTickets && (
+                <View className="flex-row gap-4 mb-8">
+                  <LinearGradient
+                    {...electricGradient}
+                    className="flex-1 rounded-2xl p-5 shadow-lg shadow-purple-900/50"
+                  >
+                    <View className="flex-row justify-between items-start mb-2">
+                      <CreditCard color="white" size={20} opacity={0.8} />
+                      {/*<Text className="text-green-300 font-bold text-xs">
+                        +15%
+                      </Text>*/}
+                    </View>
+                    <Text className="text-white/80 text-sm font-medium">
+                      Total Sales
                     </Text>
-                  </Text>
+                    <Text className="text-white text-2xl font-bold">
+                      R {stats.revenue.toLocaleString()}
+                    </Text>
+                  </LinearGradient>
+
+                  <View className="flex-1 bg-white/5 border border-white/10 rounded-2xl p-5">
+                    <View className="flex-row justify-between items-start mb-2">
+                      <TrendingUp color="#D087FF" size={20} />
+                      {/*<Text className="text-white/60 text-xs">
+                        {stats.percentageSold}% Cap
+                      </Text>*/}
+                    </View>
+                    <Text className="text-gray-400 text-sm font-medium">
+                      Tickets Sold
+                    </Text>
+                    <Text className="text-white text-2xl font-bold">
+                      {stats.soldCount}{" "}
+                      <Text className="text-gray-500 text-sm">
+                        / {stats.totalCapacity}
+                      </Text>
+                    </Text>
+                  </View>
                 </View>
-              </View>
+              )}
 
               {/* 2. ACTIONS */}
               <Text className="text-white text-xl font-bold mb-4">
@@ -314,18 +326,22 @@ const ManageEventScreen = () => {
                   }
                 />
               </View>
-              <View className="flex-row gap-4 mb-4">
-                <ManagementAction
-                  icon={<Shield color="white" size={24} />}
-                  label="Team Access"
-                  onPress={() => navigation.navigate("TeamAccess", { eventId })}
-                />
-                <ManagementAction
-                  icon={<ScanLine color="white" size={24} />}
-                  label="Scan Tickets"
-                  onPress={() => navigation.navigate("ScanTickets", { eventId })}
-                />
-              </View>
+              {/* Team Access / Scan Tickets / Guest List only apply to
+                  events that actually sell and check in tickets. */}
+              {requiresTickets && (
+                <View className="flex-row gap-4 mb-4">
+                  <ManagementAction
+                    icon={<Shield color="white" size={24} />}
+                    label="Team Access"
+                    onPress={() => navigation.navigate("TeamAccess", { eventId })}
+                  />
+                  <ManagementAction
+                    icon={<ScanLine color="white" size={24} />}
+                    label="Scan Tickets"
+                    onPress={() => navigation.navigate("ScanTickets", { eventId })}
+                  />
+                </View>
+              )}
               <View className="flex-row gap-4 mb-8">
                 <ManagementAction
                   icon={<Share2 color="white" size={24} />}
@@ -334,13 +350,15 @@ const ManageEventScreen = () => {
                     navigation.navigate("PromoteEvent", { eventId })
                   }
                 />
-                <ManagementAction
-                  icon={<Users color="white" size={24} />}
-                  label="Guest List"
-                  onPress={() =>
-                    navigation.navigate("GuestList", { eventId, eventName: eventTitle })
-                  }
-                />
+                {requiresTickets && (
+                  <ManagementAction
+                    icon={<Users color="white" size={24} />}
+                    label="Guest List"
+                    onPress={() =>
+                      navigation.navigate("GuestList", { eventId, eventName: eventTitle })
+                    }
+                  />
+                )}
                 {/*<ManagementAction
                   icon={<MessageCircle color="white" size={24} />}
                   label="Discussion"
@@ -353,54 +371,58 @@ const ManageEventScreen = () => {
                 />*/}
               </View>
 
-              {/* 3. TICKET BREAKDOWN */}
-              <Text className="text-white text-xl font-bold mb-4">
-                Ticket Breakdown
-              </Text>
-              {tiers.length === 0 ? (
-                <Text className="text-gray-500 italic">
-                  No tickets configured.
-                </Text>
-              ) : (
-                <View className="bg-white/5 rounded-2xl border border-white/5 p-4">
-                  {tiers.map((tier, index) => (
-                    <View
-                      key={index}
-                      className={`mb-5 ${
-                        index === tiers.length - 1 ? "mb-0" : ""
-                      }`}
-                    >
-                      <View className="flex-row justify-between mb-2">
-                        <Text className="text-white font-medium text-lg">
-                          {tier.name}
-                        </Text>
-                        <Text className="text-white font-bold">
-                          {tier.sold}{" "}
-                          <Text className="text-gray-500 text-sm">
-                            / {tier.quantity_total}
-                          </Text>
-                        </Text>
-                      </View>
-                      <View className="h-3 bg-black/40 rounded-full overflow-hidden flex-row items-center">
+              {/* 3. TICKET BREAKDOWN — nothing to break down without tickets */}
+              {requiresTickets && (
+                <>
+                  <Text className="text-white text-xl font-bold mb-4">
+                    Ticket Breakdown
+                  </Text>
+                  {tiers.length === 0 ? (
+                    <Text className="text-gray-500 italic">
+                      No tickets configured.
+                    </Text>
+                  ) : (
+                    <View className="bg-white/5 rounded-2xl border border-white/5 p-4">
+                      {tiers.map((tier, index) => (
                         <View
-                          style={{
-                            width: `${tier.progress}%`,
-                            backgroundColor: tier.color,
-                          }}
-                          className="h-full rounded-full"
-                        />
-                      </View>
-                      <View className="flex-row justify-between mt-1">
-                        <Text className="text-gray-500 text-xs">
-                          Price: R {tier.price}
-                        </Text>
-                        <Text className="text-gray-500 text-xs">
-                          {Math.round(tier.progress)}% Sold
-                        </Text>
-                      </View>
+                          key={index}
+                          className={`mb-5 ${
+                            index === tiers.length - 1 ? "mb-0" : ""
+                          }`}
+                        >
+                          <View className="flex-row justify-between mb-2">
+                            <Text className="text-white font-medium text-lg">
+                              {tier.name}
+                            </Text>
+                            <Text className="text-white font-bold">
+                              {tier.sold}{" "}
+                              <Text className="text-gray-500 text-sm">
+                                / {tier.quantity_total}
+                              </Text>
+                            </Text>
+                          </View>
+                          <View className="h-3 bg-black/40 rounded-full overflow-hidden flex-row items-center">
+                            <View
+                              style={{
+                                width: `${tier.progress}%`,
+                                backgroundColor: tier.color,
+                              }}
+                              className="h-full rounded-full"
+                            />
+                          </View>
+                          <View className="flex-row justify-between mt-1">
+                            <Text className="text-gray-500 text-xs">
+                              Price: R {tier.price}
+                            </Text>
+                            <Text className="text-gray-500 text-xs">
+                              {Math.round(tier.progress)}% Sold
+                            </Text>
+                          </View>
+                        </View>
+                      ))}
                     </View>
-                  ))}
-                </View>
+                  )}
+                </>
               )}
             </>
           )}
