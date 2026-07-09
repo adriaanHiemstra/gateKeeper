@@ -398,7 +398,7 @@ const FriendsSocialCircleScreen = () => {
           {/* DYNAMIC HEADER & SEARCH BAR */}
           <View className="mb-4 h-14 justify-center z-10">
             {!isSearchMode ? (
-              <View className="flex-row items-center justify-between">
+              <View key="crew-header" className="flex-row items-center justify-between">
                 <Text
                   className="text-white text-2xl font-bold"
                   style={{ fontFamily: "Jost-Medium" }}
@@ -413,7 +413,7 @@ const FriendsSocialCircleScreen = () => {
                 </TouchableOpacity>
               </View>
             ) : (
-              <View className="flex-row items-center bg-white/10 border border-white/20 rounded-xl px-4 h-full w-full shadow-lg shadow-black/50">
+              <View key="search-bar" className="flex-row items-center bg-white/10 border border-white/20 rounded-xl px-4 h-full w-full shadow-lg shadow-black/50">
                 <Search color="#FA8900" size={20} className="mr-3" />
                 <TextInput
                   placeholder="Find new friends or search crew..."
