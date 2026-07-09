@@ -13,7 +13,10 @@ import {
   Modal,
   StatusBar,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { useNavigation, useRoute, RouteProp } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
@@ -91,6 +94,11 @@ const VenueProfileScreen = () => {
   const navigation =
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const route = useRoute<VenueProfileRouteProp>();
+  // This screen has no SafeAreaView — the image carousel is meant to bleed
+  // full-screen — so the buttons overlaid on it need the real inset instead
+  // of a guessed top-12 (48px), which isn't enough clearance on notched /
+  // Dynamic Island devices.
+  const insets = useSafeAreaInsets();
   // We default to '1' for ID if missing, just for the mock demo
   const { venueName = "The Power Station", venueId = "1" } = route.params || {};
 
@@ -208,12 +216,16 @@ const VenueProfileScreen = () => {
 
           <TouchableOpacity
             onPress={() => navigation.goBack()}
-            className="absolute top-12 left-6 bg-black/50 p-2 rounded-full border border-white/10"
+            style={{ top: insets.top + 12 }}
+            className="absolute left-6 bg-black/50 p-2 rounded-full border border-white/10"
           >
             <ArrowLeft color="white" size={24} />
           </TouchableOpacity>
 
-          <TouchableOpacity className="absolute top-12 right-6 bg-black/50 p-2 rounded-full border border-white/10">
+          <TouchableOpacity
+            style={{ top: insets.top + 12 }}
+            className="absolute right-6 bg-black/50 p-2 rounded-full border border-white/10"
+          >
             <Info color="white" size={24} />
           </TouchableOpacity>
 
@@ -321,7 +333,8 @@ const VenueProfileScreen = () => {
         <View className="flex-1 bg-black">
           <TouchableOpacity
             onPress={() => setShowFullGallery(false)}
-            className="absolute top-12 right-6 z-50 bg-black/50 p-2 rounded-full"
+            style={{ top: insets.top + 12 }}
+            className="absolute right-6 z-50 bg-black/50 p-2 rounded-full"
           >
             <X color="white" size={32} />
           </TouchableOpacity>

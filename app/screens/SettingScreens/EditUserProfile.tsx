@@ -289,7 +289,7 @@ const EditUserProfile = () => {
           className="flex-1 px-6"
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
-          contentContainerStyle={{ paddingTop: 100, paddingBottom: 140 }}
+          contentContainerStyle={{ paddingTop: 120, paddingBottom: 140 }}
           enableOnAndroid={true}
           extraScrollHeight={120}
           enableAutomaticScroll={true}

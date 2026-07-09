@@ -96,16 +96,24 @@ const HostSettingsScreen = () => {
           contentContainerStyle={{ paddingTop: 120, paddingBottom: 140 }}
         >
           {/* HEADER */}
-          <View className="mb-8">
-            <Text
-              className="text-white text-3xl font-bold"
-              style={{ fontFamily: "Jost-Medium" }}
+          <View className="flex-row items-center mb-8">
+            <TouchableOpacity
+              onPress={() => navigation.goBack()}
+              className="mr-4 bg-white/10 p-2 rounded-full"
             >
-              Host Menu
-            </Text>
-            <Text className="text-gray-400 text-base">
-              Manage your business & account
-            </Text>
+              <ArrowLeft color="white" size={24} />
+            </TouchableOpacity>
+            <View>
+              <Text
+                className="text-white text-3xl font-bold"
+                style={{ fontFamily: "Jost-Medium" }}
+              >
+                Host Menu
+              </Text>
+              <Text className="text-gray-400 text-base">
+                Manage your business & account
+              </Text>
+            </View>
           </View>
 
           {/* UPGRADE TO PRO BANNER */}

@@ -35,9 +35,9 @@ const GetConnected = () => {
       {/* Top Banner */}
       <TopBanner />
 
-      <SafeAreaView className="flex-1">
+      <SafeAreaView className="flex-1" edges={['left', 'right']}>
         {/* Main Content Container - Centered */}
-        <View className="flex-1 justify-center items-center px-8 pt-24">
+        <View className="flex-1 justify-center items-center px-8 pt-32">
           
           {/* Icon Circle - Changed bg to semi-transparent white for glass effect */}
           <View className="mb-8 bg-white/10 p-6 rounded-full border border-white/20">

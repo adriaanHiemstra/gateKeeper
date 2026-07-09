@@ -83,8 +83,8 @@ const BlockedAccountsScreen = () => {
     <View className="flex-1 bg-[#121212]">
       <LinearGradient {...bannerGradient} className="absolute inset-0" />
       <TopBanner />
-      <SafeAreaView className="flex-1 px-6">
-        <View className="pt-24 flex-1">
+      <SafeAreaView className="flex-1 px-6" edges={["left", "right"]}>
+        <View className="pt-32 flex-1">
           {/* Header */}
           <View className="flex-row items-center justify-between mb-6">
             <View className="flex-row items-center">

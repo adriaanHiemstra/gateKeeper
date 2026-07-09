@@ -27,6 +27,7 @@ import {
   MapPin,
   Ticket,
   MoreVertical,
+  ArrowLeft,
 } from "lucide-react-native";
 
 // Navigation Types
@@ -347,6 +348,22 @@ const MyEventsList = () => {
 
       <SafeAreaView className="flex-1" edges={["left", "right"]}>
         <View className="flex-1 pt-[120px]">
+          {/* HEADER */}
+          <View className="flex-row items-center mb-6 mx-6">
+            <TouchableOpacity
+              onPress={() => navigation.goBack()}
+              className="mr-4 bg-white/10 p-2 rounded-full"
+            >
+              <ArrowLeft color="white" size={24} />
+            </TouchableOpacity>
+            <Text
+              className="text-white text-2xl font-bold"
+              style={{ fontFamily: "Jost-Medium" }}
+            >
+              My Events
+            </Text>
+          </View>
+
           {/* TABS SEGMENTED CONTROL */}
           <View className="flex-row bg-white/10 p-1 rounded-xl mx-6 mb-6">
             {(["upcoming", "past", "drafts"] as const).map((tab) => {

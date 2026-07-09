@@ -354,7 +354,7 @@ const FriendsSocialCircleScreen = () => {
       <TopBanner />
 
       <SafeAreaView className="flex-1" edges={["left", "right"]}>
-        <View className="flex-1 pt-24 px-6">
+        <View className="flex-1 pt-32 px-6">
           {/* HEADER SECTION (User Profile) */}
           <View className="mb-8">
             <TouchableOpacity

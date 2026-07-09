@@ -14,7 +14,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { KeyboardAwareScrollView } from "react-native-keyboard-aware-scroll-view";
 import { LinearGradient } from "expo-linear-gradient";
 import { useNavigation } from "@react-navigation/native";
-import { Camera, User, AtSign, Link, AlignLeft, Save } from "lucide-react-native";
+import { Camera, User, AtSign, Link, AlignLeft, Save, ArrowLeft } from "lucide-react-native";
 import * as ImagePicker from "expo-image-picker";
 import * as FileSystem from "expo-file-system/legacy";
 import { decode } from "base64-arraybuffer";
@@ -232,16 +232,24 @@ const HostProfileEditScreen = () => {
           enableAutomaticScroll={true}
           >
             {/* HEADER */}
-            <View className="mb-8">
-              <Text
-                className="text-white text-3xl font-bold"
-                style={{ fontFamily: "Jost-Medium" }}
+            <View className="flex-row items-center mb-8">
+              <TouchableOpacity
+                onPress={() => navigation.goBack()}
+                className="mr-4 bg-white/10 p-2 rounded-full"
               >
-                Edit Profile
-              </Text>
-              <Text className="text-gray-400 text-base">
-                Update your public host details
-              </Text>
+                <ArrowLeft color="white" size={24} />
+              </TouchableOpacity>
+              <View>
+                <Text
+                  className="text-white text-3xl font-bold"
+                  style={{ fontFamily: "Jost-Medium" }}
+                >
+                  Edit Profile
+                </Text>
+                <Text className="text-gray-400 text-base">
+                  Update your public host details
+                </Text>
+              </View>
             </View>
 
             {/* 1. PROFILE PHOTO UPLOADER */}

@@ -234,7 +234,7 @@ const WishListScreen = () => {
       <TopBanner />
 
       <SafeAreaView className="flex-1" edges={["left", "right"]}>
-        <View className="flex-1 pt-24 px-0">
+        <View className="flex-1 pt-32 px-0">
           <View className="px-6">
             {/* Header */}
             <View className="flex-row items-center mb-6">
