@@ -170,7 +170,7 @@ const TicketDisplayScreen = () => {
           {/* Header */}
           <View className="w-full flex-row items-center mb-6 px-6">
             <TouchableOpacity
-              onPress={() => navigation.navigate("Home")}
+              onPress={() => navigation.goBack()}
               className="mr-4 bg-white/10 p-2 rounded-full"
             >
               <ArrowLeft color="white" size={24} />

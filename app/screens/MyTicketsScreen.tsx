@@ -1,5 +1,5 @@
 // app/screens/MyTicketsScreen.tsx
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect, useMemo } from "react";
 import {
   View,
   Text,
@@ -20,6 +20,8 @@ import {
   QrCode,
   Calendar,
   MapPin,
+  ChevronRight,
+  Ticket,
 } from "lucide-react-native";
 
 import TopBanner from "../components/TopBanner";
@@ -34,6 +36,8 @@ const MyTicketsScreen = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [tickets, setTickets] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  // null = browsing the list of events; set = drilled into that event's tickets
+  const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
 
   useFocusEffect(
     useCallback(() => {
@@ -83,6 +87,103 @@ const MyTicketsScreen = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  // Group tickets by event so the user picks an event first, then sees just
+  // that event's tickets — tickets are already ordered by purchased_at desc,
+  // so groups naturally land in most-recently-purchased-first order too.
+  const eventGroups = useMemo(() => {
+    const map = new Map<string, any>();
+    tickets.forEach((t) => {
+      const event = t.events || {};
+      if (!map.has(t.event_id)) {
+        map.set(t.event_id, {
+          eventId: t.event_id,
+          title: event.title || "Unknown Event",
+          date: event.date,
+          location: event.location_text || "TBA",
+          banner: event.banner_url,
+          tickets: [] as any[],
+        });
+      }
+      map.get(t.event_id).tickets.push(t);
+    });
+    return Array.from(map.values());
+  }, [tickets]);
+
+  // If the selected event's tickets disappear from underneath us (e.g. a
+  // refetch on focus), fall back to the event list instead of showing blank.
+  useEffect(() => {
+    if (
+      selectedEventId &&
+      !eventGroups.some((g) => g.eventId === selectedEventId)
+    ) {
+      setSelectedEventId(null);
+    }
+  }, [eventGroups, selectedEventId]);
+
+  const selectedGroup = eventGroups.find((g) => g.eventId === selectedEventId);
+
+  const renderEventGroup = ({ item }: { item: (typeof eventGroups)[number] }) => {
+    const eventDate = item.date
+      ? new Date(item.date).toLocaleDateString()
+      : "Date TBA";
+    const imageSource = item.banner
+      ? { uri: item.banner }
+      : require("../assets/event-placeholder.png");
+
+    return (
+      <TouchableOpacity
+        activeOpacity={0.9}
+        onPress={() => setSelectedEventId(item.eventId)}
+        className="mb-4 bg-white/5 border border-white/10 rounded-3xl overflow-hidden"
+      >
+        <View className="flex-row p-4 items-center">
+          <Image
+            source={imageSource}
+            className="w-24 h-24 rounded-2xl mr-4"
+            resizeMode="cover"
+          />
+
+          <View className="flex-1 justify-center">
+            <Text
+              className="text-white text-xl font-bold mb-1"
+              style={{ fontFamily: "Jost-Medium" }}
+              numberOfLines={1}
+            >
+              {item.title}
+            </Text>
+
+            <View className="flex-row items-center mb-1">
+              <Calendar color="#FA8900" size={14} className="mr-1" />
+              <Text className="text-gray-300 text-xs">{eventDate}</Text>
+            </View>
+
+            <View className="flex-row items-center">
+              <MapPin color="#666" size={14} className="mr-1" />
+              <Text className="text-gray-400 text-xs" numberOfLines={1}>
+                {item.location}
+              </Text>
+            </View>
+          </View>
+
+          <ChevronRight color="#666" size={20} />
+        </View>
+
+        <View className="bg-white/5 px-4 py-2 flex-row justify-between items-center">
+          <View className="flex-row items-center">
+            <Ticket color="#FA8900" size={14} className="mr-2" />
+            <Text className="text-white/60 text-xs font-bold uppercase tracking-widest ml-1">
+              {item.tickets.length}{" "}
+              {item.tickets.length === 1 ? "Ticket" : "Tickets"}
+            </Text>
+          </View>
+          <Text className="text-orange-500 text-xs font-bold">
+            Tap to View
+          </Text>
+        </View>
+      </TouchableOpacity>
+    );
   };
 
   const renderTicket = ({ item }: { item: any }) => {
@@ -171,10 +272,9 @@ const MyTicketsScreen = () => {
     );
   };
 
-  const filteredTickets = tickets.filter((t) => {
-    const title = t.events?.title || "";
-    return title.toLowerCase().includes(searchQuery.toLowerCase());
-  });
+  const filteredGroups = eventGroups.filter((g) =>
+    g.title.toLowerCase().includes(searchQuery.toLowerCase())
+  );
 
   return (
     <View className="flex-1 bg-[#121212]">
@@ -185,38 +285,59 @@ const MyTicketsScreen = () => {
         <View className="flex-1 pt-32 px-6">
           <View className="flex-row items-center mb-6">
             <TouchableOpacity
-              onPress={() => navigation.goBack()}
+              onPress={() =>
+                selectedGroup
+                  ? setSelectedEventId(null)
+                  : navigation.goBack()
+              }
               className="mr-4 bg-white/10 p-2 rounded-full"
             >
               <ArrowLeft color="white" size={24} />
             </TouchableOpacity>
             <Text
-              className="text-white text-3xl font-bold"
+              className="text-white text-3xl font-bold flex-1"
               style={{ fontFamily: "Jost-Medium" }}
+              numberOfLines={1}
             >
-              Your Tickets
+              {selectedGroup ? selectedGroup.title : "Your Tickets"}
             </Text>
           </View>
 
-          <View className="flex-row items-center bg-white/10 border border-white/20 rounded-2xl px-4 h-14 mb-8">
-            <Search color="#FA8900" size={24} className="mr-3" />
-            <TextInput
-              placeholder="Search..."
-              placeholderTextColor="#666"
-              className="flex-1 text-white text-lg font-medium h-full"
-              style={{ fontFamily: "Jost-Medium" }}
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-            />
-          </View>
+          {/* Search only makes sense at the event-picker level */}
+          {!selectedGroup && (
+            <View className="flex-row items-center bg-white/10 border border-white/20 rounded-2xl px-4 h-14 mb-8">
+              <Search color="#FA8900" size={24} className="mr-3" />
+              <TextInput
+                placeholder="Search..."
+                placeholderTextColor="#666"
+                className="flex-1 text-white text-lg font-medium h-full"
+                style={{ fontFamily: "Jost-Medium" }}
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+              />
+            </View>
+          )}
 
           {loading ? (
             <ActivityIndicator color="#FA8900" size="large" className="mt-10" />
-          ) : (
+          ) : selectedGroup ? (
             <FlatList
-              data={filteredTickets}
+              data={selectedGroup.tickets}
               renderItem={renderTicket}
               keyExtractor={(item) => item.id}
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={{ paddingBottom: 120, paddingTop: 8 }}
+              ListEmptyComponent={
+                <View className="items-center mt-10">
+                  <Text className="text-gray-500">No tickets found.</Text>
+                </View>
+              }
+            />
+          ) : (
+            <FlatList
+              data={filteredGroups}
+              renderItem={renderEventGroup}
+              keyExtractor={(item) => item.eventId}
               showsVerticalScrollIndicator={false}
               contentContainerStyle={{ paddingBottom: 120 }}
               ListEmptyComponent={
