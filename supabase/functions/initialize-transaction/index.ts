@@ -43,10 +43,29 @@ Deno.serve(async (req) => {
     // 2. Event + its host's payout subaccount + any per-event fee override.
     const { data: event } = await admin
       .from("events")
-      .select("id, host_id, commission_pct, commission_flat")
+      .select("id, host_id, commission_pct, commission_flat, date, end_date, requires_tickets")
       .eq("id", eventId)
       .single();
     if (!event) return reply({ ok: false, error: "Event not found." });
+
+    // Reject stale checkouts authoritatively — a feed card left open past an
+    // event's expiry (or a link someone still has bookmarked) must not be
+    // able to reach payment just because the client-side state is stale.
+    // Mirrors app/lib/eventFilters.ts's notEndedFilter/hasEventEnded rule:
+    // ended once end_date passes (if set), else 24h after the start (date)
+    // for ticketed events, or immediately at the start for info-only ones.
+    const IMPLIED_DURATION_MS = 24 * 60 * 60 * 1000;
+    const now = Date.now();
+    const eventHasEnded = event.end_date
+      ? new Date(event.end_date).getTime() < now
+      : new Date(event.date).getTime() <
+        now - ((event.requires_tickets ?? true) ? IMPLIED_DURATION_MS : 0);
+    if (eventHasEnded) {
+      return reply({
+        ok: false,
+        error: "This event has already ended, so tickets are no longer available.",
+      });
+    }
 
     const { data: host } = await admin
       .from("profiles")

@@ -20,6 +20,7 @@ import { bannerGradient, fireGradient } from "../styles/colours";
 import TopBanner from "../components/TopBanner";
 import { RootStackParamList } from "../types/types";
 import { supabase } from "../lib/supabase";
+import { hasEventEnded } from "../lib/eventFilters";
 
 type PurchaseRouteProp = RouteProp<RootStackParamList, "PurchaseTicket">;
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
@@ -91,6 +92,25 @@ const PurchaseTicketScreen = () => {
   };
 
   const loadData = async () => {
+    // Always re-verify against the DB that the event hasn't ended, even when
+    // nav params already carry tier data — a card left open on a feed that
+    // hasn't refreshed since the event expired shouldn't be able to reach
+    // checkout just because it was tapped before the expiry.
+    const { data: freshness } = await supabase
+      .from("events")
+      .select("date, end_date, requires_tickets")
+      .eq("id", eventId)
+      .maybeSingle();
+
+    if (freshness && hasEventEnded(freshness)) {
+      Alert.alert(
+        "Event Ended",
+        "This event has already ended, so tickets are no longer available."
+      );
+      navigation.goBack();
+      return;
+    }
+
     // A. USE PASSED DATA (If available)
     if (initialName && initialTiers && initialTiers.length > 0) {
       // ✅ FILTER LOGIC: Only show active tickets

@@ -22,3 +22,18 @@ export function notEndedFilter(now: Date = new Date()): string {
     `and(end_date.is.null,requires_tickets.eq.false,date.gte.${nowIso})`,
   ].join(",");
 }
+
+// The same "still live" rule as notEndedFilter, but as a plain boolean check
+// for a single already-fetched row — e.g. re-verifying at checkout that an
+// event a stale feed card pointed at hasn't actually ended in the meantime.
+export function hasEventEnded(
+  event: { date: string; end_date?: string | null; requires_tickets?: boolean | null },
+  now: Date = new Date(),
+): boolean {
+  if (event.end_date) return new Date(event.end_date).getTime() < now.getTime();
+  const requiresTickets = event.requires_tickets ?? true;
+  const cutoffMs = requiresTickets
+    ? now.getTime() - IMPLIED_DURATION_MS
+    : now.getTime();
+  return new Date(event.date).getTime() < cutoffMs;
+}
