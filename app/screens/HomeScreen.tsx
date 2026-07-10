@@ -90,7 +90,7 @@ const HomeScreen = () => {
         supabase
           .from("events")
           .select(
-            `*, profiles:host_id ( username, avatar_url ), ticket_tiers (*)`,
+            `*, profiles:host_id ( host_username, host_avatar_url, username, avatar_url ), ticket_tiers (*)`,
           )
           .eq("is_public", true)
           // An event stays in the feed (and therefore buyable) for its whole
@@ -101,7 +101,7 @@ const HomeScreen = () => {
         supabase
           .from("event_updates")
           .select(
-            `*, events ( title, id, date, end_date, profiles:host_id ( username, avatar_url ) )`,
+            `*, events ( title, id, date, end_date, profiles:host_id ( host_username, host_avatar_url, username, avatar_url ) )`,
           )
           .order("created_at", { ascending: false })
           .limit(MAX_UPDATES),
@@ -267,8 +267,8 @@ const HomeScreen = () => {
         eventId: data.id,
         eventName: data.title,
         attendees: 120,
-        logo: data.profiles?.avatar_url
-          ? { uri: data.profiles.avatar_url }
+        logo: (data.profiles?.host_avatar_url || data.profiles?.avatar_url)
+          ? { uri: data.profiles.host_avatar_url || data.profiles.avatar_url }
           : require("../assets/profile-pic-1.png"),
         banner: data.banner_url
           ? { uri: data.banner_url }
@@ -372,10 +372,10 @@ const HomeScreen = () => {
                     caption={item.caption}
                     image={item.image_url}
                     eventTitle={eventObj?.title || "Unknown Event"}
-                    hostName={hostProfile?.username || "Unknown Host"}
-                    
+                    hostName={hostProfile?.host_username || hostProfile?.username || "Unknown Host"}
+
                     // 🚨 FIX: Pass the raw string URL (or null) instead of the { uri: ... } object!
-                    hostAvatar={hostProfile?.avatar_url || null}
+                    hostAvatar={hostProfile?.host_avatar_url || hostProfile?.avatar_url || null}
                     
                     timestamp={new Date(item.created_at).toLocaleDateString()}
                     attendeesCount={0}
@@ -402,8 +402,9 @@ const HomeScreen = () => {
                   : null;
 
               // (Keep your EventFeedCard object logic exactly the same since it works!)
-              const eventAvatar = item.profiles?.avatar_url && item.profiles.avatar_url.trim() !== ""
-                ? { uri: item.profiles.avatar_url }
+              const hostAvatarUrl = item.profiles?.host_avatar_url || item.profiles?.avatar_url;
+              const eventAvatar = hostAvatarUrl && hostAvatarUrl.trim() !== ""
+                ? { uri: hostAvatarUrl }
                 : require("../assets/profile-pic-1.png");
 
               return (
@@ -412,7 +413,7 @@ const HomeScreen = () => {
                     cardHeight={CARD_HEIGHT}
                     id={item.id}
                     title={item.title}
-                    hostName={item.profiles?.username || "Unknown Host"}
+                    hostName={item.profiles?.host_username || item.profiles?.username || "Unknown Host"}
                     mediaItems={item.images || []}
                     minPrice={minPrice ? minPrice.toString() : undefined}
                     tags={item.categories || []}

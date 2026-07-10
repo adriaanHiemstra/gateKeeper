@@ -244,7 +244,7 @@ const SearchScreen = () => {
       let dbQuery = supabase
         .from("events")
         .select(
-          `*, profiles:host_id ( username, avatar_url ), venues:venue_id ( name, address )`,
+          `*, profiles:host_id ( host_username, host_avatar_url, username, avatar_url ), venues:venue_id ( name, address )`,
         )
         // An event stays searchable (and therefore buyable) for its whole
         // run, not just until it starts.
@@ -974,8 +974,8 @@ const SearchScreen = () => {
               <EventFeedCard
                 id={selectedEvent.id}
                 title={selectedEvent.title}
-                hostName={selectedEvent.profiles?.username || ""}
-                hostAvatar={selectedEvent.profiles?.avatar_url}
+                hostName={selectedEvent.profiles?.host_username || selectedEvent.profiles?.username || ""}
+                hostAvatar={selectedEvent.profiles?.host_avatar_url || selectedEvent.profiles?.avatar_url}
                 image={selectedEvent.banner_url}
                 attendeesCount={100}
                 showSocial={false}

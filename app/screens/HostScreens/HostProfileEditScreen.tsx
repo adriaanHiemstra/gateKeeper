@@ -91,7 +91,8 @@ const HostProfileEditScreen = () => {
     scrollRef.current?.scrollToFocusedInput(findNodeHandle(event.target));
   };
 
-  // Load the host's real profile (host & user share the same profiles row).
+  // Load the host's own profile fields — separate from the personal ones
+  // EditUserProfile edits, so saving here never touches the personal identity.
   useEffect(() => {
     const fetchProfile = async () => {
       try {
@@ -103,18 +104,24 @@ const HostProfileEditScreen = () => {
 
         const { data, error } = await supabase
           .from("profiles")
-          .select("full_name, username, bio, website, avatar_url")
+          .select(
+            "host_full_name, host_username, host_bio, host_avatar_url, website, full_name, username, bio, avatar_url",
+          )
           .eq("id", user.id)
           .single();
 
         if (error && error.code !== "PGRST116") throw error;
 
         if (data) {
-          setName(data.full_name || "");
-          setHandle(data.username || "");
-          setBio(data.bio || "");
+          // Fall back to the personal fields only as a starting suggestion for
+          // hosts who haven't set up a host profile yet — never saved as-is
+          // unless they actually hit Save.
+          setName(data.host_full_name || data.full_name || "");
+          setHandle(data.host_username || data.username || "");
+          setBio(data.host_bio || data.bio || "");
           setWebsite(data.website || "");
-          if (data.avatar_url) setProfilePic({ uri: data.avatar_url });
+          const avatar = data.host_avatar_url || data.avatar_url;
+          if (avatar) setProfilePic({ uri: avatar });
         }
       } catch (error: any) {
         console.error("Error loading host profile:", error.message);
@@ -178,19 +185,19 @@ const HostProfileEditScreen = () => {
       const { error } = await supabase
         .from("profiles")
         .update({
-          full_name: name,
-          username: handle,
-          bio: bio,
+          host_full_name: name,
+          host_username: handle,
+          host_bio: bio,
           website: website,
-          avatar_url: finalAvatarUrl,
+          host_avatar_url: finalAvatarUrl,
           updated_at: new Date().toISOString(),
         })
         .eq("id", userId);
 
       if (error) {
-        // Username has a UNIQUE constraint — give a friendly message.
+        // host_username has a UNIQUE constraint — give a friendly message.
         if (error.code === "23505") {
-          throw new Error("That username is already taken. Try another.");
+          throw new Error("That handle is already taken. Try another.");
         }
         throw error;
       }

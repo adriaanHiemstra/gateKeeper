@@ -188,8 +188,9 @@ const EventProfileScreen = () => {
 // Fetch Event Data
           const { data: event, error: eventError } = await supabase
             .from("events")
-            // 🚨 Added full_name to the fetch list!
-            .select(`*, profiles:host_id ( username, full_name, avatar_url ), ticket_tiers (*)`)
+            // Host identity is separate from personal — prefer host_* fields,
+            // falling back to personal ones for hosts who never set up a host profile.
+            .select(`*, profiles:host_id ( host_username, host_full_name, host_avatar_url, username, full_name, avatar_url ), ticket_tiers (*)`)
             .eq("id", eventId)
             .single();
 
@@ -228,13 +229,17 @@ const EventProfileScreen = () => {
   const eventName =
     displayEvent?.title || displayEvent?.eventName || "Loading...";
 
-  const hostName = 
-    displayEvent?.profiles?.username || 
-    displayEvent?.profiles?.full_name || 
+  const hostName =
+    displayEvent?.profiles?.host_username ||
+    displayEvent?.profiles?.host_full_name ||
+    displayEvent?.profiles?.username ||
+    displayEvent?.profiles?.full_name ||
     "Unknown Host";
 
-  const hostAvatar = displayEvent?.profiles?.avatar_url
-    ? { uri: displayEvent.profiles.avatar_url }
+  const hostAvatarUrl =
+    displayEvent?.profiles?.host_avatar_url || displayEvent?.profiles?.avatar_url;
+  const hostAvatar = hostAvatarUrl
+    ? { uri: hostAvatarUrl }
     : require("../assets/profile-pic-1.png");
 
   const rawDescription =
