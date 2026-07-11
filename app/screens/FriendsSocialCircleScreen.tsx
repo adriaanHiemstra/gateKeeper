@@ -526,12 +526,17 @@ const FriendsSocialCircleScreen = () => {
                   <TouchableOpacity
                     onPress={handleSyncContacts}
                     disabled={isSyncingContacts}
-                    className="bg-white/10 p-3 rounded-full border border-white/10"
+                    className="bg-orange-500 px-4 py-3 rounded-full flex-row items-center"
                   >
                     {isSyncingContacts ? (
-                      <ActivityIndicator size="small" color="#FA8900" />
+                      <ActivityIndicator size="small" color="white" />
                     ) : (
-                      <RefreshCw color="#FA8900" size={20} />
+                      <>
+                        <RefreshCw color="white" size={12} className="mr-1.5" />
+                        <Text className="text-white font-bold text-sm">
+                          Resync
+                        </Text>
+                      </>
                     )}
                   </TouchableOpacity>
                   <TouchableOpacity
