@@ -252,13 +252,21 @@ const EventProfileScreen = () => {
   const locationText =
     displayEvent?.location_text || displayEvent?.location || "Location TBA";
 
+  const formatDateTime = (d: Date) =>
+    `${d.toLocaleDateString()} • ${d.toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+    })}`;
+
   const dateObj = displayEvent?.date ? new Date(displayEvent.date) : null;
   const timeText = dateObj
-    ? `${dateObj.toLocaleDateString()} • ${dateObj.toLocaleTimeString([], {
-        hour: "2-digit",
-        minute: "2-digit",
-      })}`
+    ? formatDateTime(dateObj)
     : displayEvent?.time || "Date TBA";
+
+  const endDateObj = displayEvent?.end_date
+    ? new Date(displayEvent.end_date)
+    : null;
+  const endTimeText = endDateObj ? formatDateTime(endDateObj) : null;
 
   const rawImages = displayEvent?.images;
   const banner =
@@ -268,10 +276,16 @@ const EventProfileScreen = () => {
   const galleryImages =
     rawImages && rawImages.length > 0 ? rawImages : [banner];
 
-  const lowestPrice = displayEvent?.lowest_price;
   const tiers = displayEvent?.ticket_tiers || [];
-  const rawPriceString = (tiers.length > 0 && tiers[0].price != null) 
-    ? String(tiers[0].price) 
+  const activeTiers = tiers.filter((t: any) => t.is_active !== false);
+  // Derive the lowest price straight from the tiers rather than trusting a
+  // separate lowest_price column, which can go stale or be unset.
+  const lowestPrice =
+    activeTiers.length > 0
+      ? Math.min(...activeTiers.map((t: any) => Number(t.price) || 0))
+      : displayEvent?.lowest_price;
+  const rawPriceString = (tiers.length > 0 && tiers[0].price != null)
+    ? String(tiers[0].price)
     : "TBA";
   const isFree =
     lowestPrice === 0 || rawPriceString.toLowerCase().includes("free");
@@ -280,7 +294,7 @@ const EventProfileScreen = () => {
   if (isFree) {
     displayPrice = "FIND OUT MORE";
   } else if (lowestPrice !== null && lowestPrice !== undefined) {
-    displayPrice = `From R${lowestPrice}`;
+    displayPrice = `As From R${lowestPrice}`;
   } else {
     displayPrice = rawPriceString
       .split("|")[0]
@@ -726,11 +740,14 @@ const EventProfileScreen = () => {
               <View className="bg-orange-500/20 p-3 rounded-xl mr-4">
                 <Calendar color="#FA8900" size={24} />
               </View>
-              <View>
+              <View className="flex-1">
                 <Text className="text-white font-bold text-lg">
                   Date & Time
                 </Text>
-                <Text className="text-gray-400">{timeText}</Text>
+                <Text className="text-gray-400">Starts {timeText}</Text>
+                {endTimeText && (
+                  <Text className="text-gray-400">Ends {endTimeText}</Text>
+                )}
               </View>
             </View>
 
@@ -748,13 +765,34 @@ const EventProfileScreen = () => {
               </View>
             </View>
 
-            <View className="flex-row items-center">
+            <View className="flex-row items-start">
               <View className="bg-purple-500/20 p-3 rounded-xl mr-4">
                 <Ticket color="#D087FF" size={24} />
               </View>
-              <View>
-                <Text className="text-white font-bold text-lg">Tickets</Text>
-                <Text className="text-gray-400">{displayPrice}</Text>
+              <View className="flex-1">
+                <Text className="text-white font-bold text-lg mb-1">
+                  Tickets
+                </Text>
+                {activeTiers.length > 0 ? (
+                  activeTiers.map((tier: any, i: number) => (
+                    <View
+                      key={tier.id || i}
+                      className="flex-row justify-between items-center mb-1"
+                    >
+                      <Text
+                        className="text-gray-400 flex-1 mr-2"
+                        numberOfLines={1}
+                      >
+                        {tier.name}
+                      </Text>
+                      <Text className="text-gray-300 font-semibold">
+                        {Number(tier.price) === 0 ? "Free" : `R${tier.price}`}
+                      </Text>
+                    </View>
+                  ))
+                ) : (
+                  <Text className="text-gray-400">{displayPrice}</Text>
+                )}
               </View>
             </View>
           </View>
