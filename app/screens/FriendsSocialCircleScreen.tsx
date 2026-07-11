@@ -21,7 +21,9 @@ import {
   UserPlus,
   UserMinus,
   Users,
+  RefreshCw,
 } from "lucide-react-native";
+import * as Contacts from "expo-contacts";
 
 // Backend & Auth
 import { supabase } from "../lib/supabase";
@@ -56,6 +58,10 @@ const FriendsSocialCircleScreen = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isSearchingDb, setIsSearchingDb] = useState(false);
+
+  // Contact Resync State
+  const [isSyncingContacts, setIsSyncingContacts] = useState(false);
+  const [contactMatches, setContactMatches] = useState<any[] | null>(null);
 
   // --- 1. FETCH CURRENT USER PROFILE ---
   useEffect(() => {
@@ -208,9 +214,101 @@ const FriendsSocialCircleScreen = () => {
         .from("friendships")
         .insert({ user_id_1: user.id, user_id_2: friendId });
       setFriendIds((prev) => new Set(prev).add(friendId));
+      setContactMatches((prev) =>
+        prev ? prev.filter((p) => p.id !== friendId) : prev,
+      );
       fetchFriends(blockedIds);
     } catch (error) {
       Alert.alert("Error", `Could not add ${name}`);
+    }
+  };
+
+  // --- RESYNC CONTACTS ---
+  // Same phone-number matching as onboarding (see Onboarding.tsx's
+  // handleSyncContacts), but re-runnable any time and reviewed via the
+  // existing Add-button flow rather than auto-adding anyone.
+  const handleSyncContacts = async () => {
+    if (!user) return;
+    setIsSyncingContacts(true);
+    try {
+      const { status } = await Contacts.requestPermissionsAsync();
+      if (status !== "granted") {
+        Alert.alert(
+          "Permission Needed",
+          "Allow contacts access to find friends already on GateKeeper.",
+        );
+        return;
+      }
+
+      const { data } = await Contacts.getContactsAsync({
+        fields: [Contacts.Fields.PhoneNumbers],
+      });
+
+      const cleanedContacts = data
+        .flatMap((c) =>
+          c.phoneNumbers ? c.phoneNumbers.map((p) => p.number) : [],
+        )
+        .filter(Boolean)
+        .map((num) => num?.replace(/\D/g, ""))
+        .flatMap((num) => {
+          if (!num) return [];
+          if (num.startsWith("27") && num.length === 11) {
+            return [num, "0" + num.substring(2)];
+          } else if (num.startsWith("0") && num.length === 10) {
+            return [num, "27" + num.substring(1)];
+          }
+          return [num];
+        });
+
+      const uniqueContacts = Array.from(new Set(cleanedContacts));
+      if (uniqueContacts.length === 0) {
+        Alert.alert(
+          "No Contacts",
+          "We couldn't find any phone numbers in your contacts.",
+        );
+        return;
+      }
+
+      const { data: dbMatches, error } = await supabase.rpc(
+        "match_contacts",
+        { phone_array: uniqueContacts },
+      );
+      if (error) throw error;
+
+      const newMatchIds = Array.from(
+        new Set(
+          (dbMatches ?? [])
+            .map((m: any) => m.id)
+            .filter(
+              (id: string) =>
+                id !== user.id && !friendIds.has(id) && !blockedIds.has(id),
+            ),
+        ),
+      );
+
+      if (newMatchIds.length === 0) {
+        Alert.alert(
+          "All Synced Up",
+          "No new friends found — you're already connected to everyone we matched.",
+        );
+        return;
+      }
+
+      const { data: matchProfiles, error: profileError } = await supabase
+        .from("profiles")
+        .select("id, full_name, username, avatar_url")
+        .in("id", newMatchIds);
+      if (profileError) throw profileError;
+
+      setContactMatches(matchProfiles || []);
+    } catch (error) {
+      console.error("Error syncing contacts:", error);
+      Alert.alert(
+        "Sync Failed",
+        "Something went wrong syncing your contacts. Try again.",
+      );
+    } finally {
+      setIsSyncingContacts(false);
     }
   };
 
@@ -346,7 +444,11 @@ const FriendsSocialCircleScreen = () => {
     );
   };
 
-  const displayData = searchQuery.length > 0 ? searchResults : friends;
+  const displayData = contactMatches
+    ? contactMatches
+    : searchQuery.length > 0
+      ? searchResults
+      : friends;
 
   return (
     <View className="flex-1 bg-[#121212]">
@@ -397,7 +499,22 @@ const FriendsSocialCircleScreen = () => {
 
           {/* DYNAMIC HEADER & SEARCH BAR */}
           <View className="mb-4 h-14 justify-center z-10">
-            {!isSearchMode ? (
+            {contactMatches ? (
+              <View key="contact-matches-header" className="flex-row items-center justify-between">
+                <Text
+                  className="text-white text-2xl font-bold"
+                  style={{ fontFamily: "Jost-Medium" }}
+                >
+                  New From Contacts ({contactMatches.length})
+                </Text>
+                <TouchableOpacity
+                  onPress={() => setContactMatches(null)}
+                  className="bg-white/10 p-3 rounded-full border border-white/10"
+                >
+                  <X color="#FA8900" size={20} />
+                </TouchableOpacity>
+              </View>
+            ) : !isSearchMode ? (
               <View key="crew-header" className="flex-row items-center justify-between">
                 <Text
                   className="text-white text-2xl font-bold"
@@ -405,12 +522,25 @@ const FriendsSocialCircleScreen = () => {
                 >
                   Your Crew ({friends.length})
                 </Text>
-                <TouchableOpacity
-                  onPress={() => toggleSearchMode(true)}
-                  className="bg-white/10 p-3 rounded-full border border-white/10"
-                >
-                  <Search color="#FA8900" size={20} />
-                </TouchableOpacity>
+                <View className="flex-row items-center gap-2">
+                  <TouchableOpacity
+                    onPress={handleSyncContacts}
+                    disabled={isSyncingContacts}
+                    className="bg-white/10 p-3 rounded-full border border-white/10"
+                  >
+                    {isSyncingContacts ? (
+                      <ActivityIndicator size="small" color="#FA8900" />
+                    ) : (
+                      <RefreshCw color="#FA8900" size={20} />
+                    )}
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => toggleSearchMode(true)}
+                    className="bg-white/10 p-3 rounded-full border border-white/10"
+                  >
+                    <Search color="#FA8900" size={20} />
+                  </TouchableOpacity>
+                </View>
               </View>
             ) : (
               <View key="search-bar" className="flex-row items-center bg-white/10 border border-white/20 rounded-xl px-4 h-full w-full shadow-lg shadow-black/50">
@@ -452,7 +582,19 @@ const FriendsSocialCircleScreen = () => {
                   <View className="w-20 h-20 bg-white/5 rounded-full items-center justify-center mb-4 border border-white/10">
                     <Users color="#666" size={32} />
                   </View>
-                  {searchQuery.length > 0 ? (
+                  {contactMatches ? (
+                    <>
+                      <Text
+                        className="text-white font-bold text-xl mb-2 text-center"
+                        style={{ fontFamily: "Jost-Medium" }}
+                      >
+                        All added!
+                      </Text>
+                      <Text className="text-gray-500 text-center">
+                        You've added everyone from this sync.
+                      </Text>
+                    </>
+                  ) : searchQuery.length > 0 ? (
                     <>
                       <Text
                         className="text-white font-bold text-xl mb-2 text-center"
