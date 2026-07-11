@@ -62,6 +62,7 @@ const HomeScreen = () => {
   // Feed state
   const [feedData, setFeedData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
   // Panel State
   const [isPanelOpen, setIsPanelOpen] = useState(false);
@@ -83,6 +84,7 @@ const HomeScreen = () => {
       const {
         data: { user },
       } = await supabase.auth.getUser();
+      setCurrentUserId(user?.id ?? null);
       const now = new Date();
 
       // Fetch the building blocks in parallel for speed.
@@ -424,6 +426,7 @@ const HomeScreen = () => {
                         : require("../assets/event-placeholder.png")
                     }
                     attendeesCount={0}
+                    isOwnEvent={!!currentUserId && item.host_id === currentUserId}
                     // The card loads "which friends are going" itself (useEventFriends);
                     // it hands that list back here so the slide-in panel can show them.
                     onOpenSocial={(friends) => openPanel(friends, item.title)}

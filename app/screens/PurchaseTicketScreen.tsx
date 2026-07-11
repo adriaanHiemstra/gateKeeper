@@ -20,6 +20,7 @@ import { bannerGradient, fireGradient } from "../styles/colours";
 import TopBanner from "../components/TopBanner";
 import { RootStackParamList } from "../types/types";
 import { supabase } from "../lib/supabase";
+import { useAuth } from "../context/AuthContext";
 import { hasEventEnded } from "../lib/eventFilters";
 
 type PurchaseRouteProp = RouteProp<RootStackParamList, "PurchaseTicket">;
@@ -28,6 +29,7 @@ type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 const PurchaseTicketScreen = () => {
   const navigation = useNavigation<NavigationProp>();
   const route = useRoute<PurchaseRouteProp>();
+  const { user } = useAuth();
 
   const [isBuying, setIsBuying] = useState(false);
   const [loadingData, setLoadingData] = useState(false);
@@ -98,7 +100,7 @@ const PurchaseTicketScreen = () => {
     // checkout just because it was tapped before the expiry.
     const { data: freshness } = await supabase
       .from("events")
-      .select("date, end_date, requires_tickets")
+      .select("date, end_date, requires_tickets, host_id")
       .eq("id", eventId)
       .maybeSingle();
 
@@ -107,6 +109,12 @@ const PurchaseTicketScreen = () => {
         "Event Ended",
         "This event has already ended, so tickets are no longer available."
       );
+      navigation.goBack();
+      return;
+    }
+
+    if (freshness && user && freshness.host_id === user.id) {
+      Alert.alert("Your Event", "You can't buy tickets to your own event.");
       navigation.goBack();
       return;
     }

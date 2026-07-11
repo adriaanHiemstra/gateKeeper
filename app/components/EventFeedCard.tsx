@@ -64,6 +64,7 @@ type EventFeedCardProps = {
   disableTap?: boolean;
   onOpenDiscussion?: () => void;
   cardHeight?: number;
+  isOwnEvent?: boolean;
 };
 
 // 🔥 THE BULLETPROOF HIGH-RES UPSCALER
@@ -147,6 +148,7 @@ const EventFeedCard = ({
   tags = [],
   disableTap = false,
   cardHeight,
+  isOwnEvent = false,
 }: EventFeedCardProps) => {
   const CARD_HEIGHT = cardHeight ?? DEFAULT_CARD_HEIGHT;
   const [isFullScreen, setIsFullScreen] = useState(false);
@@ -466,6 +468,17 @@ const EventFeedCard = ({
             </LinearGradient>
           </TouchableOpacity>
         </LinearGradient>
+
+        {isOwnEvent && (
+          <View
+            style={{ zIndex: 50 }}
+            className="absolute top-6 left-4 bg-orange-500 px-4 py-2 rounded-full border border-white/20 shadow-lg shadow-black/60"
+          >
+            <Text className="text-white text-xs font-bold uppercase tracking-wider">
+              My Event
+            </Text>
+          </View>
+        )}
 
         {showSocial && (
           <TouchableOpacity

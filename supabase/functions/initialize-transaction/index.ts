@@ -67,6 +67,10 @@ Deno.serve(async (req) => {
       });
     }
 
+    if (event.host_id === user.id) {
+      return reply({ ok: false, error: "You can't buy tickets to your own event." });
+    }
+
     const { data: host } = await admin
       .from("profiles")
       .select("paystack_subaccount_code")

@@ -15,6 +15,7 @@ import {
   AppState,
   FlatList,
   Platform,
+  Alert,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import {
@@ -45,6 +46,7 @@ import TopBanner from "../components/TopBanner";
 import { useSavedEvent } from "../hooks/useSavedEvent";
 import { useEventFriends } from "../hooks/useEventFriends";
 import { supabase } from "../lib/supabase";
+import { useAuth } from "../context/AuthContext";
 
 // Styles
 import { fireGradient, bannerGradient } from "../styles/colours";
@@ -105,6 +107,7 @@ const EventProfileScreen = () => {
   const navigation =
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { params } = useRoute<EventProfileRouteProp>();
+  const { user } = useAuth();
 
   // Initial Params (Fallback)
   const eventId = params?.eventId;
@@ -290,6 +293,9 @@ const EventProfileScreen = () => {
   // default to true when the column predates this event's row.
   const requiresTickets = displayEvent?.requires_tickets ?? true;
 
+  // Hosts shouldn't be able to buy tickets to their own event.
+  const isOwnEvent = !!user && !!displayEvent?.host_id && displayEvent.host_id === user.id;
+
   // 🔥 SAFELY PARSE CATEGORIES FOR TAGS
   let parsedTags: string[] = [];
   const rawCats =
@@ -329,6 +335,10 @@ const EventProfileScreen = () => {
   }, []);
 
   const handleTicketPress = () => {
+    if (isOwnEvent) {
+      Alert.alert("Your Event", "You can't buy tickets to your own event.");
+      return;
+    }
     if (ticketUrl) {
       setAwaitingTicketReturn(true);
       Linking.openURL(ticketUrl).catch((err) => {
@@ -763,7 +773,7 @@ const EventProfileScreen = () => {
             Gated on !loading too: until the real row loads, requiresTickets
             falls back to the nav params (which never carry that field) and
             would otherwise flash a bogus "Buy Tickets" button. */}
-        {!loading && (requiresTickets || ticketUrl) && (
+        {!loading && !isOwnEvent && (requiresTickets || ticketUrl) && (
           <View className="absolute bottom-0 left-0 right-0 bg-[#121212]/95 border-t border-white/10 p-6 pb-8 flex-row items-center justify-between">
             <View className="flex-1 mr-4">
               <Text className="text-gray-400 text-xs font-bold uppercase">
@@ -801,6 +811,14 @@ const EventProfileScreen = () => {
                 </Text>
               </LinearGradient>
             </TouchableOpacity>
+          </View>
+        )}
+
+        {!loading && isOwnEvent && requiresTickets && (
+          <View className="absolute bottom-0 left-0 right-0 bg-[#121212]/95 border-t border-white/10 p-6 pb-8">
+            <Text className="text-gray-400 text-center font-medium">
+              You're hosting this event — manage tickets from your Host Dashboard.
+            </Text>
           </View>
         )}
       </SafeAreaView>
